@@ -2,59 +2,55 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
-const moment = require('moment');  // If you are using moment.js for date formatting
+const moment = require('moment');
 
-const Student = require('./models/student');  // Import the Student model
-const Faculty = require('./models/faculty');  // Import the Faculty model
-const findPersonByNumber = require('./findPerson');  // Import the function from 
+// Import models and utility functions
+const Student = require('./models/student');
+const Faculty = require('./models/faculty');
+const findPersonByNumber = require('./findPerson');
 const addPerson = require('./addPerson');
 const getNotices = require('./getNotices');
 const addNotice = require('./addNotice');
-
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('Could not connect to MongoDB...', err));
 
-// Initialize the WhatsApp client with local authentication
+// Initialize WhatsApp client
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: 'Auth' // Path where authentication data will be stored
+        dataPath: 'Auth'
     })
 });
 
-// Event listener for when the client is ready
+// 1. QR code event should come first
+client.on('qr', qr => {
+    qrcode.generate(qr, { small: true }); // Generate and display QR code in terminal
+});
+
+// 2. Ready event
 client.on('ready', () => {
     // console.clear(); // Clear console when ready
     console.log('Client is ready!'); // Log that the client is ready
 });
 
-// Event listener for generating QR code for authentication
-client.on('qr', qr => {
-    qrcode.generate(qr, { small: true }); // Generate and display QR code in terminal
-});
-
-// Initialize the WhatsApp client
-client.initialize();
-
-// Event listener for incoming messages
+// Handle incoming messages
 client.on('message_create', async message => {
     try {
         if (message.id.fromMe == false &&
             message.id.remote.endsWith('@c.us') &&
             message.body.startsWith('$')) {
-            // if incoming, chat, starts with $
+
             const phone_number = message.from.slice(2, 12);
             const person = await findPersonByNumber(phone_number);
-            // if student
+
+            // Handle student messages
             if (person && person.type === "Student") {
+                // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
-                const student_msg = message.body.slice(1);
-                if (student_msg === "1") {
+                if (message.body.startsWith("$1")) {
                     // get notice updates
-                    // const sem = 3;  // Example semester
-                    // const department = 'Computer Science';  // Example department
                     getNotices(student_data.sem, student_data.department)
                         .then(async notices => {
                             if (notices.length === 0) {
@@ -79,55 +75,96 @@ client.on('message_create', async message => {
                             console.error('Error fetching notice:', error);  // Handle any errors
                         });
 
-                } else if (student_msg === "2") {
-                    // Handle case when student_msg is "2"
-                    // get exam updates
-                } else if (student_msg === "3") {
-                    // Handle case when student_msg is "3"
-                    // get placement updates
-
-                } else if (student_msg === "4") {
-                    // Handle case when student_msg is "4"
+                } else if (message.body.startsWith("$2")) {
                     // add notice
                     if (student_data.iscr == true) {
-                        await message.reply("Under development");
+                        const notice_info = message.body.slice(3);
+                        const notice_date = moment().format('YYYY-MM-DD');
+                        const notice_sem = student_data.sem;
+                        const notice_department = student_data.department;
+                        const notice_data = {
+                            date: notice_date,
+                            sem: notice_sem,
+                            department: notice_department,
+                            info: notice_info
+                        };
+                        if (notice_info.length == 0) {
+                            await message.reply("Please enter the notice info");
+                        } else {
+                            addNotice(notice_data)
+                                .then(async () => {
+                                    await message.reply("Notice added successfully");
+                                })
+                                .catch(error => {
+                                    console.error('Error adding notice:', error);
+                                });
+                        }
                     }
                     else {
                         await message.reply("You are not authorized to do this");
                     }
-                } else if (student_msg === "5") {
-                    // Handle case when student_msg is "4"
+                } else if (message.body.startsWith("$3")) {
                     // add student
-                    if (student_data.iscr == true) {
-                        await message.reply("Under development");
+                    if (student_data.iscr == true) { // only CR can add student
+                        // the message.body should be in this format $3_Studentname_number
+                        // input student is never a cr, cr data is already in database
+                        try {
+                            let input_student_name = message.body.slice(3, message.body.indexOf('_', 3));
+                            let input_student_number = message.body.slice(message.body.indexOf('_', 3) + 1);
+                            if (input_student_number.length > 10) {
+                                // take last 10 digits
+                                input_student_number = input_student_number.slice(-10);
+                            }
+                            if (input_student_number.length < 10 || input_student_name.length == 0) {
+                                throw new Error("Invalid info");
+                            }
+                            const input_student_data = {
+                                name: input_student_name,
+                                number: input_student_number,
+                                sem: student_data.sem,
+                                department: student_data.department,
+                                iscr: false
+                            };
+                            addPerson("Student", input_student_data);
+                        }
+                        catch (error) {
+                            console.log("Error in adding student ", error);
+                            await message.reply("Enter info like : $3_Studentname_number");
+                        }
                     }
                     else {
                         await message.reply("You are not authorized to do this");
                     }
+                } else if (message.body.startsWith("$4")) {
+                    // list total student data with same sem and department
+                    Student.find({ sem: student_data.sem, department: student_data.department })
+                        .then(async students => {
+                            let msg = "Total students in this sem and department are : \n";
+                            for (const student of students) {
+                                msg += student.name + " " + student.number + "\n";
+                            }
+                            await message.reply(msg);
+                        })
+                        .catch(error => {
+                            console.error('Error fetching student data:', error);
+                        });
                 } else {
-                    let msg = "Please select \n$1 for Notice\n$2 for exam Update\n$3 for placement Update\n";
-                    if (student_msg !== "") {
+                    let msg = "Please select \n$1 for Notice\n$2_noticeinfo to add notice(only CR)\n$3_Name_Number to add student(only CR)\n$4 to list total student data int your class";
+                    if (message.body !== "$") {
                         msg = "Unable to understand your query\n" + msg;
-                    }
-                    if (student_data.iscr == true || true) {
-                        msg += "$4 to add notice(only CR)\n";
-                        msg += "$5 to add student(only CR)\n";
                     }
                     await message.reply(msg);
                 }
             }
-            // if faculty
+            // Handle faculty messages
             else if (person && person.type === "Faculty") {
+                // message.reply("Hi Professor "+person.data.name);
                 const faculty_data = person.data;
                 const faculty_msg = message.body.slice(1);
                 const msg = "Respected " + person.data.name + "\nWelcome to GCETTS Helper bot" + "\nChatbot under development !";
                 await message.reply(msg);
             }
-            else {
-                // not in database
-                // ignore
-                console.log("incoming text from neither student nor faculty\n");
-            }
+            // Ignore if not in database
         }
     }
     catch (error) {
@@ -135,24 +172,6 @@ client.on('message_create', async message => {
     }
 });
 
-// const role = 'Student';  // Example role
-// const data = {
-//   number: '9674910765',
-//   name: 'Maa',
-//   sem: 7,                // Example semester
-//   department: 'CSE',
-//   iscr: true             // Example whether the student is registered
-// };
+// Initialize the client
+client.initialize();
 
-// addPerson(role, data);
-
-// Example data to add a notice
-// const noticeData = {
-//     date: new Date(),              // Current date
-//     sem: 7,                        // Example semester
-//     department: 'CSE', // Example department
-//     info: 'Project Presentation 23th jan 2025' // Example notice information
-// };
-
-// Call the function to add the notice
-// addNotice(noticeData);
