@@ -47,12 +47,12 @@ client.on('message_create', async message => {
             const person = await findPerson(phone_number);
 
             // Handle student messages
-            if (person && person.type === "Student") {
-                // return statement added because i want to debug person==null portion
-                return;
-
+            if (person && person.type === "STUDENT") {
                 // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
+                console.log("Message from : ", student_data.name);
+
+
                 if (message.body.startsWith("$1")) {
                     // get notice updates
                     getNotices(student_data.sem, student_data.department)
@@ -67,7 +67,7 @@ client.on('message_create', async message => {
                                 // Use for...of loop for async/await to work properly
                                 for (const notice of notices) {
                                     const formattedDate = moment(notice.date).format('YYYY-MM-DD');  // Format the date
-                                    const temp_notice_info = `Notice Date: ${formattedDate}\n Info: ${notice.info}`;
+                                    const temp_notice_info = `Notice Date: *${formattedDate}*\nInfo: ${notice.info}\nUpdated By: *${notice.updated_by}*`;
 
                                     // Reply with the formatted notice information
                                     await message.reply(temp_notice_info);
@@ -80,17 +80,19 @@ client.on('message_create', async message => {
                         });
 
                 } else if (message.body.startsWith("$2")) {
-                    // add notice
+                    // add notice only cr can do this
                     if (student_data.iscr == true) {
                         const notice_info = message.body.slice(3);
                         const notice_date = moment().format('YYYY-MM-DD');
                         const notice_sem = student_data.sem;
                         const notice_department = student_data.department;
+                        const notice_updated_by = student_data.name;
                         const notice_data = {
                             date: notice_date,
                             sem: notice_sem,
                             department: notice_department,
-                            info: notice_info
+                            info: notice_info,
+                            updated_by: notice_updated_by
                         };
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
@@ -99,7 +101,8 @@ client.on('message_create', async message => {
                                 .then(async () => {
                                     await message.reply("Notice added successfully");
                                 })
-                                .catch(error => {
+                                .catch(async error => {
+                                    await message.reply("Error adding notice");
                                     console.error('Error adding notice:', error);
                                 });
                         }
@@ -108,44 +111,54 @@ client.on('message_create', async message => {
                         await message.reply("You are not authorized to do this");
                     }
                 } else if (message.body.startsWith("$3")) {
-                    // add student
-                    if (student_data.iscr == true) { // only CR can add student
-                        // the message.body should be in this format $3_Studentname_number
-                        // input student is never a cr, cr data is already in database
-                        try {
-                            let input_student_name = message.body.slice(3, message.body.indexOf('_', 3));
-                            let input_student_number = message.body.slice(message.body.indexOf('_', 3) + 1);
-                            if (input_student_number.length > 10) {
-                                // take last 10 digits
-                                input_student_number = input_student_number.slice(-10);
-                            }
-                            if (input_student_number.length < 10 || input_student_name.length == 0) {
-                                throw new Error("Invalid info");
-                            }
-                            const input_student_data = {
-                                name: input_student_name,
-                                number: input_student_number,
-                                sem: student_data.sem,
-                                department: student_data.department,
-                                iscr: false
-                            };
-                            addPerson("Student", input_student_data);
+                    // edit config file
+                    // only cr can do this
+                    try {
+                        let current_config = await Config.findOne({ about: "STUDENT" });
+
+                        const current_config_str = `1 Add person ${current_config.add_person}\n2 Delete person ${current_config.delete_person}\n3 Add notice ${current_config.add_notice}\n4 Delete notice ${current_config.delete_notice}`;
+                        
+                        if (message.body.length <= 2) {
+                            // user does not want anything more
+                            await message.reply("$3_toggle to toggle config\n\nCurrent config is : \n" + current_config_str);
+                            console.log("Current config is : \n" + current_config_str);
+                            return;
                         }
-                        catch (error) {
-                            console.log("Error in adding student ", error);
-                            await message.reply("Enter info like : $3_Studentname_number");
+                        if (student_data.iscr == true) {
+                            if (message.body === "$3_toggle") {
+                                current_config.add_person = !(current_config.add_person);
+                                current_config.delete_person = !(current_config.delete_person);
+                                current_config.add_notice = !(current_config.add_notice);
+                                current_config.delete_notice = !(current_config.delete_notice);
+                                current_config.save();
+                                if (current_config.add_person == true) {
+                                    await message.reply("System Unlocked by " + student_data.name);
+                                }
+                                else {
+                                    await message.reply("System Locked by " + student_data.name);
+                                }
+                            }
+                            else {
+                                message.reply("Please use $3_toggle to toggle config");
+                            }
                         }
+                        else {
+                            message.reply("Only CR can edit config");
+                        }
+
+                    } catch (error) {
+                        console.log("Error in $3 ", error);
                     }
-                    else {
-                        await message.reply("You are not authorized to do this");
-                    }
+                    // else {
+                    //     await message.reply("You are not authorized to do this");
+                    // }
                 } else if (message.body.startsWith("$4")) {
                     // list total student data with same sem and department
                     Student.find({ sem: student_data.sem, department: student_data.department })
                         .then(async students => {
-                            let msg = "Total students in this sem and department are : \n";
+                            let msg = `Total students in sem ${student_data.sem} and department ${student_data.department} are : \n`;
                             for (const student of students) {
-                                msg += student.name + " " + student.number + "\n";
+                                msg += student.name + " " + student.number + "\n" + student.rollnumber + "\n";
                             }
                             await message.reply(msg);
                         })
@@ -153,7 +166,7 @@ client.on('message_create', async message => {
                             console.error('Error fetching student data:', error);
                         });
                 } else {
-                    let msg = "Please select \n$1 for Notice\n$2_noticeinfo to add notice(only CR)\n$3_Name_Number to add student(only CR)\n$4 to list total student data int your class";
+                    let msg = "Please select \n\n$1 for Notice\n\n$2_noticeinfo to add notice(only CR)\n\n$3_To See Student Config\n\n$4 to list total student data int your class\n\n$5 to edit your info";
                     if (message.body !== "$") {
                         msg = "Unable to understand your query\n" + msg;
                     }
@@ -161,11 +174,7 @@ client.on('message_create', async message => {
                 }
             }
             // Handle faculty messages
-            else if (person && person.type === "Faculty") {
-                // return statement added because i want to debug person==null portion
-                return;
-
-
+            else if (person && person.type === "FACULTY") {
                 // message.reply("Hi Professor "+person.data.name);
                 const faculty_data = person.data;
                 const faculty_msg = message.body.slice(1);
@@ -179,12 +188,19 @@ client.on('message_create', async message => {
                 // example: $_Faculty_Manjari Saha_CSE\n
                 // For Student: $_role_name_department_sem_rollnumber\n
                 // example: $_Student_Avronil Banerjee_7_CSE_11000121016";
-                const registration_msg = "\nYou are not registered in the database\n" +
+
+                if (Config.findOne({ about: "STUDENT" }).add_person == false && Config.findOne({ about: "FACULTY" }).add_person == false) {
+                    await message.reply("Registration feature is disabled");
+                    return;
+                }
+
+                const registration_msg = "\nYou are not registered in the database\n\n" +
                     "Register yourself in this format below\n\n" +
-                    "For Faculty: $_role_name_department\n" +
-                    "example: $_Faculty_Manjari Saha_CSE\n\n" +
-                    "For Student: $_role_name_department_sem_rollnumber\n" +
-                    "example: $_Student_Avronil Banerjee_CSE_7_11000121016";
+                    "For Faculty: $_role_name_department\n\n" +
+                    "example: $_FACULTY_Manjari Saha_CSE\n\n" +
+                    "For Student: $_role_name_department_sem_rollnumber\n\n" +
+                    "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
+                    "Departments : (CSE , IT, TT, APM)";
                 console.log("message from unknown person ");
                 console.log(phone_number);
                 try {
@@ -212,11 +228,26 @@ client.on('message_create', async message => {
                         else {
                             console.log(sem, rollnumber);
                         }
-                        // adding student data to database
-                        addPerson(role, { number: phone_number, name: name, sem: sem, department: department, roll: rollnumber, iscr: false });
+                        // if registration is closed
+                        if (Config.findOne({ about: "STUDENT" }).add_person == false) {
+                            // adding student data to database
+                            await message.reply("Registration feature is disabled");
+                        }
+                        else { // registration is open
+                            addPerson(role, { number: phone_number, name: name, sem: sem, department: department, roll: rollnumber, iscr: false });
+
+                        }
                     }
                     else if (role == "FACULTY") {
-                        addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
+                        // if registration is closed
+                        if (Config.findOne({ about: "FACULTY" }).add_person == false) {
+                            // adding student data to database
+                            await message.reply("Registration feature is disabled");
+                        }
+                        else { // registration is open
+                            addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
+
+                        }
                     }
                     await message.reply("Hi " + name + "\n" + "thank you for registering");
                 } catch (error) {

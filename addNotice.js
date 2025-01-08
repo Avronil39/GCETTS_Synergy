@@ -8,7 +8,8 @@ const addNotice = async (data) => {
       date: data.date,
       sem: data.sem,
       department: data.department,
-      info: data.info
+      info: data.info,
+      updated_by: data.updated_by
     });
 
     // Save the notice to the database
@@ -16,7 +17,8 @@ const addNotice = async (data) => {
 
     console.log('Notice added successfully:', newNotice);  // Success message
   } catch (error) {
-    console.error('Error adding notice:', error);  // Error handling
+    throw error;
+    // console.error('Error adding notice:', error);  // Error handling
   }
 };
 
