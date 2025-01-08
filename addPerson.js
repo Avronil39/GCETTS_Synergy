@@ -4,7 +4,7 @@ const Faculty = require('./models/faculty');  // Import the Faculty model
 // Function to add a person (either Faculty or Student) based on the role
 const addPerson = (role, data) => {
   try {
-    if (role === 'Faculty') {
+    if (role === 'FACULTY') {
       const faculty = new Faculty({
         number: data.number,
         name: data.name,
@@ -16,12 +16,13 @@ const addPerson = (role, data) => {
           console.log('Faculty data saved successfully:', faculty);  // Success message
         })
         .catch(err => console.error("Unable to save faculty data:", err));
-    } else if (role === 'Student') {
+    } else if (role === 'STUDENT') {
       const student = new Student({
         number: data.number,
         name: data.name,
         sem: data.sem,
         department: data.department,
+        roll: data.roll,
         iscr: data.iscr
       });
       student.save()
@@ -33,7 +34,7 @@ const addPerson = (role, data) => {
       throw new Error('Unable to understand role ' + role);
     }
   } catch (error) {
-    throw error;
+    console.error("Error in addPerson:", error);
   }
 };
 

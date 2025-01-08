@@ -7,10 +7,11 @@ const moment = require('moment');
 // Import models and utility functions
 const Student = require('./models/student');
 const Faculty = require('./models/faculty');
-const findPersonByNumber = require('./findPerson');
+const findPerson = require('./findPerson');
 const addPerson = require('./addPerson');
 const getNotices = require('./getNotices');
 const addNotice = require('./addNotice');
+const Config = require('./models/config');
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
@@ -43,10 +44,13 @@ client.on('message_create', async message => {
             message.body.startsWith('$')) {
 
             const phone_number = message.from.slice(2, 12);
-            const person = await findPersonByNumber(phone_number);
+            const person = await findPerson(phone_number);
 
             // Handle student messages
             if (person && person.type === "Student") {
+                // return statement added because i want to debug person==null portion
+                return;
+
                 // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
                 if (message.body.startsWith("$1")) {
@@ -158,13 +162,68 @@ client.on('message_create', async message => {
             }
             // Handle faculty messages
             else if (person && person.type === "Faculty") {
+                // return statement added because i want to debug person==null portion
+                return;
+
+
                 // message.reply("Hi Professor "+person.data.name);
                 const faculty_data = person.data;
                 const faculty_msg = message.body.slice(1);
                 const msg = "Respected " + person.data.name + "\nWelcome to GCETTS Helper bot" + "\nChatbot under development !";
                 await message.reply(msg);
             }
-            // Ignore if not in database
+            // Not in database
+            else if (person == null) {
+                // Register yourself in this format below\n
+                // For Faculty: $_role_name_department\n
+                // example: $_Faculty_Manjari Saha_CSE\n
+                // For Student: $_role_name_department_sem_rollnumber\n
+                // example: $_Student_Avronil Banerjee_7_CSE_11000121016";
+                const registration_msg = "\nYou are not registered in the database\n" +
+                    "Register yourself in this format below\n\n" +
+                    "For Faculty: $_role_name_department\n" +
+                    "example: $_Faculty_Manjari Saha_CSE\n\n" +
+                    "For Student: $_role_name_department_sem_rollnumber\n" +
+                    "example: $_Student_Avronil Banerjee_CSE_7_11000121016";
+                console.log("message from unknown person ");
+                console.log(phone_number);
+                try {
+                    // taking role
+                    const role = message.body.slice(2, message.body.indexOf('_', 2)).toUpperCase();
+                    // taking name
+                    const name = message.body.slice(message.body.indexOf('_', 2) + 1, message.body.indexOf('_', message.body.indexOf('_', 2) + 1)).toUpperCase();
+                    // taking department
+                    const department = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1, message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1)).toUpperCase();
+                    // checking role name department
+                    if (role.length < 1 || name.length < 1 || department.length < 1) {
+                        throw new Error("Invalid role,name,department provided");
+                    }
+                    else {
+                        console.log(role, name, department);
+                    }
+
+                    if (role == "STUDENT") {
+                        // taking sem
+                        const sem = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1, message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1)).toUpperCase();
+                        // taking rollnumber
+                        const rollnumber = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1) + 1);
+                        if (sem.length < 1 || rollnumber.length < 1)
+                            throw new Error("Invalid sem,rollnumber provided");
+                        else {
+                            console.log(sem, rollnumber);
+                        }
+                        // adding student data to database
+                        addPerson(role, { number: phone_number, name: name, sem: sem, department: department, roll: rollnumber, iscr: false });
+                    }
+                    else if (role == "FACULTY") {
+                        addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
+                    }
+                    await message.reply("Hi " + name + "\n" + "thank you for registering");
+                } catch (error) {
+                    console.log("inside registration catch block \n", error);
+                    await message.reply("*Welcome to GCETTS*" + registration_msg);
+                }
+            }
         }
     }
     catch (error) {
@@ -175,3 +234,30 @@ client.on('message_create', async message => {
 // Initialize the client
 client.initialize();
 
+
+// // Create configuration for students
+// const studentConfig = new Config({
+//     about: "Student",
+//     add_person: true,
+//     delete_person: true,
+//     add_notice: true,
+//     delete_notice: true
+// });
+
+// // Create configuration for faculties
+// const facultyConfig = new Config({
+//     about: "Faculty",
+//     add_person: true,
+//     delete_person: true,
+//     add_notice: true,
+//     delete_notice: true
+// });
+
+// // Save to the database
+// studentConfig.save()
+//     .then(() => console.log("Student configuration saved!"))
+//     .catch(err => console.error("Error saving student configuration:", err));
+
+// facultyConfig.save()
+//     .then(() => console.log("Faculty configuration saved!"))
+//     .catch(err => console.error("Error saving faculty configuration:", err));
