@@ -7,11 +7,13 @@ const moment = require('moment');
 // Import models and utility functions
 const Student = require('./models/student');
 const Faculty = require('./models/faculty');
-const findPerson = require('./findPerson');
-const addPerson = require('./addPerson');
-const getNotices = require('./getNotices');
-const addNotice = require('./addNotice');
 const Config = require('./models/config');
+const Assignment = require('./models/assignment');
+const findPerson = require('./services/findPerson');
+const addPerson = require('./services/findPerson');
+const getNotices = require('./services/getNotices');
+const addNotice = require('./services/addNotice');
+
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
@@ -51,33 +53,31 @@ client.on('message_create', async message => {
                 // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
                 console.log("Message from : ", student_data.name);
-
-
                 if (message.body.startsWith("$1")) {
                     // get notice updates
-                    getNotices(student_data.sem, student_data.department)
-                        .then(async notices => {
-                            if (notices.length === 0) {
-                                console.log('No notice available');  // If no notices found
-                                await message.reply("No notice in the last 30 days.");
-                            } else {
-                                console.log('Loading notices from the last 30 days...');
-                                await message.reply("Loading notices from the last 30 days...");
+                    try {
+                        const notices = await getNotices(student_data.sem, student_data.department);
 
-                                // Use for...of loop for async/await to work properly
-                                for (const notice of notices) {
-                                    const formattedDate = moment(notice.date).format('YYYY-MM-DD');  // Format the date
-                                    const temp_notice_info = `Notice Date: *${formattedDate}*\nInfo: ${notice.info}\nUpdated By: *${notice.updated_by}*`;
+                        if (notices.length === 0) {
+                            console.log('No notice available');  // If no notices found
+                            await message.reply("No notice in the last 30 days.");
+                        } else {
+                            console.log('Loading notices from the last 30 days...');
+                            await message.reply("Loading notices from the last 30 days...");
 
-                                    // Reply with the formatted notice information
-                                    await message.reply(temp_notice_info);
-                                    console.log(temp_notice_info);
-                                }
+                            // Loop through the notices and reply with each one
+                            for (const notice of notices) {
+                                const formattedDate = moment(notice.date).format('YYYY-MM-DD');  // Format the date
+                                const temp_notice_info = `Notice Date: *${formattedDate}*\nInfo: ${notice.info}\nUpdated By: *${notice.updated_by}*`;
+
+                                // Reply with the formatted notice information
+                                await message.reply(temp_notice_info);
+                                console.log(temp_notice_info);
                             }
-                        })
-                        .catch(error => {
-                            console.error('Error fetching notice:', error);  // Handle any errors
-                        });
+                        }
+                    } catch (error) {
+                        console.error('Error fetching notice:', error);  // Handle any errors
+                    }
 
                 } else if (message.body.startsWith("$2")) {
                     // add notice only cr can do this
@@ -97,61 +97,56 @@ client.on('message_create', async message => {
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
                         } else {
-                            addNotice(notice_data)
-                                .then(async () => {
-                                    await message.reply("Notice added successfully");
-                                })
-                                .catch(async error => {
-                                    await message.reply("Error adding notice");
-                                    console.error('Error adding notice:', error);
-                                });
+                            try {
+                                await addNotice(notice_data);
+                                await message.reply("Notice added successfully");
+                            } catch (error) {
+                                await message.reply("Error adding notice");
+                                console.error('Error adding notice:', error);
+                            }
                         }
                     }
                     else {
                         await message.reply("You are not authorized to do this");
                     }
                 } else if (message.body.startsWith("$3")) {
-                    // edit config file
-                    // only cr can do this
+                    // view or edit config
                     try {
                         let current_config = await Config.findOne({ about: "STUDENT" });
-
                         const current_config_str = `1 Add person ${current_config.add_person}\n2 Delete person ${current_config.delete_person}\n3 Add notice ${current_config.add_notice}\n4 Delete notice ${current_config.delete_notice}`;
-                        
                         if (message.body.length <= 2) {
-                            // user does not want anything more
+                            // user only wants to view config
                             await message.reply("$3_toggle to toggle config\n\nCurrent config is : \n" + current_config_str);
                             console.log("Current config is : \n" + current_config_str);
-                            return;
                         }
-                        if (student_data.iscr == true) {
-                            if (message.body === "$3_toggle") {
-                                current_config.add_person = !(current_config.add_person);
-                                current_config.delete_person = !(current_config.delete_person);
-                                current_config.add_notice = !(current_config.add_notice);
-                                current_config.delete_notice = !(current_config.delete_notice);
-                                current_config.save();
-                                if (current_config.add_person == true) {
-                                    await message.reply("System Unlocked by " + student_data.name);
+                        else if (message.body.length > 2) {
+                            // user might want to toggle config
+                            if (student_data.iscr == true) {
+                                if (message.body === "$3_toggle") {
+                                    current_config.add_person = !(current_config.add_person);
+                                    current_config.delete_person = !(current_config.delete_person);
+                                    current_config.add_notice = !(current_config.add_notice);
+                                    current_config.delete_notice = !(current_config.delete_notice);
+                                    current_config.save();
+                                    if (current_config.add_person == true) {
+                                        await message.reply("System Unlocked by " + student_data.name);
+                                    }
+                                    else {
+                                        await message.reply("System Locked by " + student_data.name);
+                                    }
                                 }
                                 else {
-                                    await message.reply("System Locked by " + student_data.name);
+                                    message.reply("Please use $3_toggle to toggle config");
                                 }
                             }
                             else {
-                                message.reply("Please use $3_toggle to toggle config");
+                                message.reply("Only CR can edit config");
                             }
-                        }
-                        else {
-                            message.reply("Only CR can edit config");
                         }
 
                     } catch (error) {
                         console.log("Error in $3 ", error);
                     }
-                    // else {
-                    //     await message.reply("You are not authorized to do this");
-                    // }
                 } else if (message.body.startsWith("$4")) {
                     // list total student data with same sem and department
                     Student.find({ sem: student_data.sem, department: student_data.department })
@@ -175,11 +170,68 @@ client.on('message_create', async message => {
             }
             // Handle faculty messages
             else if (person && person.type === "FACULTY") {
-                // message.reply("Hi Professor "+person.data.name);
                 const faculty_data = person.data;
-                const faculty_msg = message.body.slice(1);
-                const msg = "Respected " + person.data.name + "\nWelcome to GCETTS Helper bot" + "\nChatbot under development !";
-                await message.reply(msg);
+                const faculty_msg = message.body;
+                if (message.body == "$") {
+                    await message.reply("Please select \n\n$1 to create assignment\n\n$2 to view assignment status\n\n$3 to download assignments\n\n$4 to list all students in your department");
+                }
+                else if (message.body.startsWith("$1")) {
+                    // faculty_msg contains semester subject name optional message
+                    // in this format $1_sem_subject_optionalMsg
+                    const sem = faculty_msg.slice(2, faculty_msg.indexOf('_', 2));
+                    const subject = faculty_msg.slice(faculty_msg.indexOf('_', 2) + 1, faculty_msg.indexOf('_', faculty_msg.indexOf('_', 2) + 1));
+                    const optional_msg = faculty_msg.slice(faculty_msg.indexOf('_', faculty_msg.indexOf('_', 2) + 1) + 1);
+                    const syntax = "$1_sem_subject_optionalMsg";
+                    if (!(sem > 1 && sem < 8)) {
+                        // check if sem is between 1 to 8
+                        await message.reply("Invalid semester\n" + "syntax : " + syntax);
+                        return;
+                    }
+                    if (subject.length < 1) {
+                        await message.reply("Please enter the subject name\n" + "syntax : " + syntax);
+                        return;
+                    }
+                    // Example of saving a new assignment with an optional message
+                    // folder path is projectdir/uploads/department/sem/subject_name
+                    // create folder if not exists
+                    const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
+                    if (!fs.existsSync(folder_path)) {
+                        console.log("New folder created : " + folder_path);
+                        fs.mkdirSync(folder_path, { recursive: true });
+                    }
+
+                    // create assignment
+                    const newAssignment = new Assignment({
+                        semester: sem,
+                        given_by: faculty_data.name, // Faculty name
+                        department: faculty_data.department,  // Department
+                        subject_name: subject, // Subject name
+                        folder_path: folder_path, // Existing folder path
+                        optional_msg: 'This assignment is to be submitted by next Friday.' // Optional message
+                    });
+                    try {
+                        await newAssignment.save();
+                        await message.reply("Assignment created successfully");
+                    }
+                    catch (error) {
+                        await message.reply("Error creating assignment");
+                        console.error('Error creating assignment:', error);
+                    }
+
+                }
+                else if (message.body.startsWith("$2")) {
+                    // Assignment status
+                    // message.body in this format $3_assignmentNumber
+                }
+                else if (message.body.startsWith("$3")) {
+                    // Download assignments
+                    // message.body in this format $3_assignmentNumber
+                }
+                else if (message.body.startsWith("$3")) {
+                    // list all students in his/her department with the given year
+                    // message.body in this format $3_year1 (year values range from 1 to 4)
+                    // year 1 shows all students of sem 1 and sem 2 and so on like this
+                }
             }
             // Not in database
             else if (person == null) {
@@ -189,6 +241,7 @@ client.on('message_create', async message => {
                 // For Student: $_role_name_department_sem_rollnumber\n
                 // example: $_Student_Avronil Banerjee_7_CSE_11000121016";
 
+                // Registrations are closed for both student and faculties
                 if (Config.findOne({ about: "STUDENT" }).add_person == false && Config.findOne({ about: "FACULTY" }).add_person == false) {
                     await message.reply("Registration feature is disabled");
                     return;
@@ -237,6 +290,7 @@ client.on('message_create', async message => {
                             addPerson(role, { number: phone_number, name: name, sem: sem, department: department, roll: rollnumber, iscr: false });
 
                         }
+                        await message.reply("Hi " + name + "\n" + "thank you for registering");
                     }
                     else if (role == "FACULTY") {
                         // if registration is closed
@@ -248,8 +302,8 @@ client.on('message_create', async message => {
                             addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
 
                         }
+                        await message.reply("Hi Prof. " + name + "\n" + "thank you for registering");
                     }
-                    await message.reply("Hi " + name + "\n" + "thank you for registering");
                 } catch (error) {
                     console.log("inside registration catch block \n", error);
                     await message.reply("*Welcome to GCETTS*" + registration_msg);

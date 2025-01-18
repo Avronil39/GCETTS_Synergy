@@ -22,7 +22,8 @@ const studentSchema = new mongoose.Schema({
     },
     roll: {
         type: String,    // Roll number
-        required: true   // Required field
+        required: true,  // Required field
+        unique: true     // Ensures roll number is unique
     },
     iscr: {
         type: Boolean,   // Is CR (Class Representative)
