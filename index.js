@@ -176,21 +176,34 @@ client.on('message_create', async message => {
                     await message.reply("Please select \n\n$1 to create assignment\n\n$2 to view assignment status\n\n$3 to download assignments\n\n$4 to list all students in your department");
                 }
                 else if (message.body.startsWith("$1")) {
-                    // faculty_msg contains semester subject name optional message
-                    // in this format $1_sem_subject_optionalMsg
-                    const sem = faculty_msg.slice(2, faculty_msg.indexOf('_', 2));
-                    const subject = faculty_msg.slice(faculty_msg.indexOf('_', 2) + 1, faculty_msg.indexOf('_', faculty_msg.indexOf('_', 2) + 1));
-                    const optional_msg = faculty_msg.slice(faculty_msg.indexOf('_', faculty_msg.indexOf('_', 2) + 1) + 1);
-                    const syntax = "$1_sem_subject_optionalMsg";
-                    if (!(sem > 1 && sem < 8)) {
-                        // check if sem is between 1 to 8
-                        await message.reply("Invalid semester\n" + "syntax : " + syntax);
-                        return;
+                    try {
+                        const [command, sem, subject, ...optionalMsgParts] = message.body.split('_');
+                        const optional_msg = optionalMsgParts.join('_');
+                        console.log({ sem, subject, optional_msg });
+
+                        // if (secondUnderscore < faculty_msg.length) {
+                        //     const optional_msg = faculty_msg.slice(secondUnderscore + 1);
+                        //     console.log({ sem, subject, optional_msg });
+                        // }
+                        // else {
+                        //     console.log({ sem, subject });
+                        // }
+                        // if (!(sem > 1 && sem < 8)) {
+                        //     // check if sem is between 1 to 8
+                        //     await message.reply("Invalid semester\n" + "syntax : " + syntax);
+                        //     return;
+                        // }
+                        // if (subject.length < 1) {
+                        //     await message.reply("Please enter the subject name\n" + "syntax : " + syntax);
+                        //     return;
+                        // }
+                    } catch (error) {
+                        console.log("Error in $1 ", error);
                     }
-                    if (subject.length < 1) {
-                        await message.reply("Please enter the subject name\n" + "syntax : " + syntax);
-                        return;
-                    }
+
+
+                    return;
+
                     // Example of saving a new assignment with an optional message
                     // folder path is projectdir/uploads/department/sem/subject_name
                     // create folder if not exists
@@ -247,68 +260,64 @@ client.on('message_create', async message => {
                     return;
                 }
 
-                const registration_msg = "\nYou are not registered in the database\n\n" +
+                const registration_msg = "\n\nYou are not registered in the database\n\n" +
                     "Register yourself in this format below\n\n" +
                     "For Faculty: $_role_name_department\n\n" +
                     "example: $_FACULTY_Manjari Saha_CSE\n\n" +
                     "For Student: $_role_name_department_sem_rollnumber\n\n" +
                     "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
                     "Departments : (CSE , IT, TT, APM)";
-                console.log("message from unknown person ");
-                console.log(phone_number);
+                console.log("message from unknown person " + phone_number);
+
                 try {
-                    // taking role
-                    const role = message.body.slice(2, message.body.indexOf('_', 2)).toUpperCase();
-                    // taking name
-                    const name = message.body.slice(message.body.indexOf('_', 2) + 1, message.body.indexOf('_', message.body.indexOf('_', 2) + 1)).toUpperCase();
-                    // taking department
-                    const startIndex_Department = message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1; // Starting index for department
-                    const endIndex_Department = message.body.indexOf('_', startIndex_Department); // Ending index for department
+                    // Format: $_ROLE_NAME_DEPARTMENT_SEM_ROLLNUMBER (for students)
+                    // Format: $_ROLE_NAME_DEPARTMENT (for faculty)
+                    const [_, role, name, department, ...remainingParts] = message.body.split('_').map(part => part.toUpperCase());
 
-                    const department = message.body.slice(
-                        startIndex_Department,
-                        endIndex_Department !== -1 ? endIndex_Department : message.body.length // If `_` is not found, use the string length
-                    ).toUpperCase();
-
-                    // checking role name department
-                    if (role.length < 1 || name.length < 1 || department.length < 1) {
-                        throw new Error("Invalid role,name,department provided");
-                    }
-                    else {
-                        console.log(role, name, department);
+                    // Validate basic fields
+                    if (!role || !name || !department) {
+                        throw new Error("Invalid registration format");
                     }
 
-                    if (role == "STUDENT") {
-                        // taking sem
-                        const sem = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1, message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1)).toUpperCase();
-                        // taking rollnumber
-                        const rollnumber = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1) + 1) + 1);
-                        if (sem.length < 1 || rollnumber.length < 1)
-                            throw new Error("Invalid sem,rollnumber provided");
-                        else {
-                            console.log(sem, rollnumber);
+                    if (role === "STUDENT") {
+                        const [sem, rollnumber] = remainingParts;
+                        if (!sem || !rollnumber) {
+                            throw new Error("Invalid student registration format");
                         }
-                        // if registration is closed
-                        if (Config.findOne({ about: "STUDENT" }).add_person == false) {
-                            // adding student data to database
+                        console.log({ role, name, department, sem, rollnumber });
+
+                        if (await Config.findOne({ about: "STUDENT" }).add_person === false) {
                             await message.reply("Registration feature is disabled");
+                        } else {
+                            await addPerson(role, {
+                                number: phone_number,
+                                name,
+                                sem,
+                                department,
+                                roll: rollnumber,
+                                iscr: false
+                            });
+                            await message.reply(`Hi ${name}\nthank you for registering`);
                         }
-                        else { // registration is open
-                            addPerson(role, { number: phone_number, name: name, sem: sem, department: department, roll: rollnumber, iscr: false });
+                    } else if (role === "FACULTY") {
+                        if (remainingParts.length > 0) {
+                            throw new Error("Invalid faculty registration format");
+                        }
+                        console.log({ role, name, department });
 
-                        }
-                        await message.reply("Hi " + name + "\n" + "thank you for registering");
-                    }
-                    else if (role == "FACULTY") {
-                        // if registration is closed
-                        if (Config.findOne({ about: "FACULTY" }).add_person == false) {
-                            // adding student data to database
+                        if (await Config.findOne({ about: "FACULTY" }).add_person === false) {
                             await message.reply("Registration feature is disabled");
+                        } else {
+                            await addPerson(role, {
+                                name,
+                                number: phone_number,
+                                department,
+                                ishod: false
+                            });
+                            await message.reply(`Hi Prof. ${name}\nthank you for registering`);
                         }
-                        else { // registration is open
-                            addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
-                        }
-                        await message.reply("Hi Prof. " + name + "\n" + "thank you for registering");
+                    } else {
+                        throw new Error("Invalid role");
                     }
                 } catch (error) {
                     console.log("inside registration catch block \n", error);
