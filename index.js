@@ -10,7 +10,7 @@ const Faculty = require('./models/faculty');
 const Config = require('./models/config');
 const Assignment = require('./models/assignment');
 const findPerson = require('./services/findPerson');
-const addPerson = require('./services/findPerson');
+const addPerson = require('./services/addPerson');
 const getNotices = require('./services/getNotices');
 const addNotice = require('./services/addNotice');
 
@@ -262,7 +262,14 @@ client.on('message_create', async message => {
                     // taking name
                     const name = message.body.slice(message.body.indexOf('_', 2) + 1, message.body.indexOf('_', message.body.indexOf('_', 2) + 1)).toUpperCase();
                     // taking department
-                    const department = message.body.slice(message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1, message.body.indexOf('_', message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1)).toUpperCase();
+                    const startIndex_Department = message.body.indexOf('_', message.body.indexOf('_', 2) + 1) + 1; // Starting index for department
+                    const endIndex_Department = message.body.indexOf('_', startIndex_Department); // Ending index for department
+
+                    const department = message.body.slice(
+                        startIndex_Department,
+                        endIndex_Department !== -1 ? endIndex_Department : message.body.length // If `_` is not found, use the string length
+                    ).toUpperCase();
+
                     // checking role name department
                     if (role.length < 1 || name.length < 1 || department.length < 1) {
                         throw new Error("Invalid role,name,department provided");
@@ -300,7 +307,6 @@ client.on('message_create', async message => {
                         }
                         else { // registration is open
                             addPerson("FACULTY", { name: name, number: phone_number, department: department, ishod: false });
-
                         }
                         await message.reply("Hi Prof. " + name + "\n" + "thank you for registering");
                     }
