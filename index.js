@@ -3,6 +3,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const moment = require('moment');
+const fs = require('fs');
 
 // Import models and utility functions
 const Student = require('./models/student');
@@ -14,6 +15,7 @@ const addPerson = require('./services/addPerson');
 const getNotices = require('./services/getNotices');
 const addNotice = require('./services/addNotice');
 const addAssignment = require('./services/addAssignment');
+const findAssignment = require('./services/findAssignment');
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
@@ -52,11 +54,17 @@ client.on('message_create', async message => {
             if (person && person.type === "STUDENT") {
                 // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
+                const sem = student_data.sem;
+                const department = student_data.department;
+                const rollnumber = student_data.roll;
+                const name = student_data.name;
+
                 console.log("Message from : ", student_data.name);
+                // $1 get notices, $2 add notice, $3 for student config, $4 list all students, add media to upload assignment
                 if (message.body.startsWith("$1")) {
                     // get notice updates
                     try {
-                        const notices = await getNotices(student_data.sem, student_data.department);
+                        const notices = await getNotices(sem, department);
 
                         if (notices.length === 0) {
                             console.log('No notice available');  // If no notices found
@@ -83,20 +91,16 @@ client.on('message_create', async message => {
                     // add notice only cr can do this
                     if (student_data.iscr == true) {
                         const notice_info = message.body.slice(3);
-                        const notice_date = moment().format('YYYY-MM-DD');
-                        const notice_sem = student_data.sem;
-                        const notice_department = student_data.department;
-                        const notice_updated_by = student_data.name;
-                        const notice_data = {
-                            date: notice_date,
-                            sem: notice_sem,
-                            department: notice_department,
-                            info: notice_info,
-                            updated_by: notice_updated_by
-                        };
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
                         } else {
+                            const notice_data = {
+                                date: moment().format('YYYY-MM-DD'),
+                                sem: sem,
+                                department: department,
+                                info: notice_info,
+                                updated_by: name
+                            };
                             try {
                                 await addNotice(notice_data);
                                 await message.reply("Notice added successfully");
@@ -129,10 +133,10 @@ client.on('message_create', async message => {
                                     current_config.delete_notice = !(current_config.delete_notice);
                                     current_config.save();
                                     if (current_config.add_person == true) {
-                                        await message.reply("System Unlocked by " + student_data.name);
+                                        await message.reply("System Unlocked by " + name);
                                     }
                                     else {
-                                        await message.reply("System Locked by " + student_data.name);
+                                        await message.reply("System Locked by " + name);
                                     }
                                 }
                                 else {
@@ -149,9 +153,9 @@ client.on('message_create', async message => {
                     }
                 } else if (message.body.startsWith("$4")) {
                     // list total student data with same sem and department
-                    Student.find({ sem: student_data.sem, department: student_data.department })
+                    Student.find({ sem: sem, department: department })
                         .then(async students => {
-                            let msg = `Total students in sem ${student_data.sem} and department ${student_data.department} are : \n`;
+                            let msg = `Total students in sem ${sem} and department ${department} are : \n`;
                             for (const student of students) {
                                 msg += student.name + " " + student.number + "\n" + student.rollnumber + "\n";
                             }
@@ -160,6 +164,59 @@ client.on('message_create', async message => {
                         .catch(error => {
                             console.error('Error fetching student data:', error);
                         });
+                } else if (message.body.startsWith("$5")) {
+                    // return list of all assignments
+                    const assignments = await findAssignment(sem, department);
+                    if (assignments.length == 0) {
+                        await message.reply("No pending assignments found");
+                    } else {
+                        await message.reply("Assignments found");
+                        let msg = "";
+                        for (const assignment of assignments) {
+                            msg += assignment.subject_name + "\n";
+                        }
+                        await message.reply(msg);
+                    }
+                }
+                else if (message.hasMedia) {
+                    // with media students only provide assignment number
+                    const subject_name = message.body.toUpperCase();
+
+                    // search for assignment in the database
+                    const assignments = await findAssignment(sem, department);
+                    if (assignments.length == 0) {
+                        await message.reply("No pending assignments found");
+                    } else {
+                        if (assignments.some(assignment => assignment.subject_name === subject_name)) {
+                            try {
+                                // Download the media
+                                const media = await message.downloadMedia();
+                                // doc_name is rollnumber_name_sem_department_subject_name
+                                const doc_name = rollnumber + "_" + name + "_" + sem + "_" + department + "_" + subject_name;
+                                // Save the media to a file
+                                const folder_path = `./uploads/Assignments/${department}/${sem}/${subject_name}`;
+                                const filePath = `${folder_path}/${doc_name}.${media.mimetype.split('/')[1]}`;
+
+                                // check if folder exists
+                                // if not then reply that, deadline crossed
+                                if (!fs.existsSync(folder_path)) {
+                                    await message.reply("Deadline crossed");
+                                    return;
+                                }
+                                else {
+                                    fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
+                                    await message.reply("Assignment uploaded successfully");
+                                }
+
+                                console.log(`Media saved to ${filePath}`);
+                            } catch (err) {
+                                console.error('Failed to download media:', err);
+                            }
+                            await message.reply("Assignment found");
+                        } else {
+                            await message.reply("Assignment not found");
+                        }
+                    }
                 } else {
                     let msg = "Please select \n\n$1 for Notice\n\n$2_noticeinfo to add notice(only CR)\n\n$3_To See Student Config\n\n$4 to list total student data int your class\n\n$5 to edit your info";
                     if (message.body !== "$") {
@@ -202,10 +259,10 @@ client.on('message_create', async message => {
 
                         // create folder at ./uploads/department/sem/subject_name
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
-                        // if (!fs.existsSync(folder_path)) {
-                        //     console.log("New folder created : " + folder_path);
-                        //     fs.mkdirSync(folder_path, { recursive: true });
-                        // }
+                        if (!fs.existsSync(folder_path)) {
+                            console.log("New folder created : " + folder_path);
+                            fs.mkdirSync(folder_path, { recursive: true });
+                        }
 
                         const assignmentData = {
                             semester: semNumber,
