@@ -13,7 +13,7 @@ const findPerson = require('./services/findPerson');
 const addPerson = require('./services/addPerson');
 const getNotices = require('./services/getNotices');
 const addNotice = require('./services/addNotice');
-
+const addAssignment = require('./services/addAssignment');
 
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
@@ -173,30 +173,54 @@ client.on('message_create', async message => {
                 const faculty_data = person.data;
                 const faculty_msg = message.body;
                 if (message.body == "$") {
-                    await message.reply("Please select \n\n$1 to create assignment\n\n$2 to view assignment status\n\n$3 to download assignments\n\n$4 to list all students in your department");
+                    await message.reply("Please select \n\n$1 to create assignment\n_Syntax : $1_sem_subject_optional msg_\n\n$2 to view assignment status\n_Syntax : $2_assignmentNumber_\n\n$3 to download assignments\n_Syntax : $3_assignmentNumber_\n\n$4 to list all students in your department\n_Syntax : $4_year1_");
                 }
                 else if (message.body.startsWith("$1")) {
+                    // create assignment
+                    // syntax : $1_sem_subject_optional_msg
                     try {
                         const [command, sem, subject, ...optionalMsgParts] = message.body.split('_');
                         const optional_msg = optionalMsgParts.join('_');
-                        console.log({ sem, subject, optional_msg });
 
-                        // if (secondUnderscore < faculty_msg.length) {
-                        //     const optional_msg = faculty_msg.slice(secondUnderscore + 1);
-                        //     console.log({ sem, subject, optional_msg });
+                        // Validate semester
+                        const semNumber = parseInt(sem);
+                        if (isNaN(semNumber) || semNumber < 1 || semNumber > 8) {
+                            await message.reply("Invalid semester");
+                            return;
+                        }
+
+                        // Validate subject
+                        if (!subject || subject.trim().length === 0) {
+                            await message.reply("Invalid subject name.");
+                            return;
+                        }
+
+                        // Convert subject to uppercase
+                        const subjectUpper = subject.trim().toUpperCase();
+
+                        console.log({ sem: semNumber, subject: subjectUpper, optional_msg });
+
+                        // create folder at ./uploads/department/sem/subject_name
+                        const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
+                        // if (!fs.existsSync(folder_path)) {
+                        //     console.log("New folder created : " + folder_path);
+                        //     fs.mkdirSync(folder_path, { recursive: true });
                         // }
-                        // else {
-                        //     console.log({ sem, subject });
-                        // }
-                        // if (!(sem > 1 && sem < 8)) {
-                        //     // check if sem is between 1 to 8
-                        //     await message.reply("Invalid semester\n" + "syntax : " + syntax);
-                        //     return;
-                        // }
-                        // if (subject.length < 1) {
-                        //     await message.reply("Please enter the subject name\n" + "syntax : " + syntax);
-                        //     return;
-                        // }
+
+                        const assignmentData = {
+                            semester: semNumber,
+                            given_by: faculty_data.name,
+                            department: faculty_data.department,
+                            subject_name: subjectUpper,
+                            folder_path: folder_path
+                        };
+                        if (optional_msg) {
+                            assignmentData.optional_msg = optional_msg;
+                        }
+
+
+                        await addAssignment(assignmentData);
+
                     } catch (error) {
                         console.log("Error in $1 ", error);
                     }
@@ -248,6 +272,8 @@ client.on('message_create', async message => {
             }
             // Not in database
             else if (person == null) {
+                // registration portion is completed
+
                 // Register yourself in this format below\n
                 // For Faculty: $_role_name_department\n
                 // example: $_Faculty_Manjari Saha_CSE\n

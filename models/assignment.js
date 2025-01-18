@@ -22,8 +22,8 @@ const assignmentSchema = new mongoose.Schema({
         required: true   // Required field
     },
     upload_date: {
-        type: Date,      // Date when the assignment is uploaded
-        default: Date.now // Default value set to current date
+        type: String,
+        default: () => new Date().toISOString().split('T')[0]
     },
     folder_path: {
         type: String,    // Path where the assignment files are stored
