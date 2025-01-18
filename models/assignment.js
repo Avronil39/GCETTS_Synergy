@@ -12,6 +12,10 @@ const assignmentSchema = new mongoose.Schema({
         type: String,    // Faculty name 
         required: true   // Required field
     },
+    faculty_number: {
+        type: String,    // Faculty number
+        required: true   // Required field
+    },
     department: {
         type: String,    // Department (CSE, IT, APM, TT)
         enum: ["CSE", "IT", "APM", "TT"], // Allowed values for department
@@ -32,9 +36,22 @@ const assignmentSchema = new mongoose.Schema({
     optional_msg: {
         type: String,    // Optional message
         required: false  // Not required field
+    },
+    // every single assignment is intended for many students, so status holds number of submissions
+    status: {
+        type: Number,
+        default: 0
+    },
+    deadline: {
+        // stores only date month year doesnot care about time
+        type: Date,
+        // default 1 week from upload date 
+        default: () => new Date(new Date().setDate(new Date().getDate() + 7)),
+        required: true
     }
 });
 
 // Create and export the model
 const Assignment = mongoose.model('Assignment', assignmentSchema);
 module.exports = Assignment;
+

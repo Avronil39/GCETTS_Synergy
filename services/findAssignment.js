@@ -2,6 +2,7 @@
 const mongoose = require('mongoose');
 const Assignment = require('../models/assignment');
 
+// add optional parameter 
 async function findAssignment(semester, department) {
     try {
         const assignments = await Assignment.find({ semester: semester, department: department });

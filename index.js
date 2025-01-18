@@ -40,9 +40,30 @@ client.on('ready', () => {
     console.log('Client is ready!'); // Log that the client is ready
 });
 
+const calendarEmoji = String.fromCodePoint(0x1F4C5); // 📅
+const noticeEmoji = String.fromCodePoint(0x1F4E2);   // 📢
+const rightArrowEmoji = String.fromCodePoint(0x27A1); // ➡️
+const greenTick = String.fromCodePoint(0x2705); // ✅
+const redCross = String.fromCodePoint(0x274C); // ❌
+const blueCircle = String.fromCodePoint(0x1F535); // 🔵
+const questionMark = String.fromCodePoint(0x2753); // ❓
+
 // Handle incoming messages
 client.on('message_create', async message => {
     try {
+        // Fetch configs once at the start
+        const [studentConfig, facultyConfig] = await Promise.all([
+            Config.findOne({ about: "STUDENT" }),
+            Config.findOne({ about: "FACULTY" })
+        ]);
+
+        // Validate configs
+        if (!studentConfig || !facultyConfig) {
+            throw new Error('Required configuration not found');
+        }
+
+        // Rest of your message handling code can now use studentConfig and facultyConfig
+
         if (message.id.fromMe == false &&
             message.id.remote.endsWith('@c.us') &&
             message.body.startsWith('$')) {
@@ -52,7 +73,6 @@ client.on('message_create', async message => {
 
             // Handle student messages
             if (person && person.type === "STUDENT") {
-                // await message.reply("Hi "+person.data.name);
                 const student_data = person.data;
                 const sem = student_data.sem;
                 const department = student_data.department;
@@ -61,7 +81,7 @@ client.on('message_create', async message => {
 
                 console.log("Message from : ", student_data.name);
                 // $1 get notices, $2 add notice, $3 for student config, $4 list all students, $5 list all assignments, add media to upload assignment
-                if (message.body.startsWith("$1")) {
+                if (message.body.startsWith("$1")) { // working
                     // get notice updates
                     try {
                         const notices = await getNotices(sem, department);
@@ -74,22 +94,28 @@ client.on('message_create', async message => {
                             await message.reply("Loading notices from the last 30 days...");
 
                             // Loop through the notices and reply with each one
+                            let notice_msg = "";
                             for (const notice of notices) {
                                 const formattedDate = moment(notice.date).format('YYYY-MM-DD');  // Format the date
                                 const temp_notice_info = `Notice Date: *${formattedDate}*\nInfo: ${notice.info}\nUpdated By: *${notice.updated_by}*`;
-
+                                notice_msg += temp_notice_info + "\n********************************\n";
                                 // Reply with the formatted notice information
-                                await message.reply(temp_notice_info);
-                                console.log(temp_notice_info);
                             }
+                            await message.reply(notice_msg);
+                            console.log(notice_msg);
                         }
                     } catch (error) {
                         console.error('Error fetching notice:', error);  // Handle any errors
+                        await message.reply("Error fetching notice");
                     }
 
                 } else if (message.body.startsWith("$2")) {
                     // add notice only cr can do this
                     if (student_data.iscr == true) {
+                        if (studentConfig.add_notice == false) {
+                            await message.reply("System is locked by CR");
+                            return;
+                        }
                         const notice_info = message.body.slice(3);
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
@@ -117,7 +143,10 @@ client.on('message_create', async message => {
                     // view or edit config
                     try {
                         let current_config = await Config.findOne({ about: "STUDENT" });
-                        const current_config_str = `1 Add person ${current_config.add_person}\n2 Delete person ${current_config.delete_person}\n3 Add notice ${current_config.add_notice}\n4 Delete notice ${current_config.delete_notice}`;
+                        const current_config_str = `1 Add person ${current_config.add_person ? greenTick : redCross}` +
+                            `\n2 Delete person ${current_config.delete_person ? greenTick : redCross}` +
+                            `\n3 Add notice ${current_config.add_notice ? greenTick : redCross}` +
+                            `\n4 Delete notice ${current_config.delete_notice ? greenTick : redCross}`;
                         if (message.body.length <= 2) {
                             // user only wants to view config
                             await message.reply("$3_toggle to toggle config\n\nCurrent config is : \n" + current_config_str);
@@ -150,6 +179,7 @@ client.on('message_create', async message => {
 
                     } catch (error) {
                         console.log("Error in $3 ", error);
+                        await message.reply(`Error in $3 ${redCross}`);
                     }
                 } else if (message.body.startsWith("$4")) {
                     // list total student data with same sem and department
@@ -157,7 +187,7 @@ client.on('message_create', async message => {
                         .then(async students => {
                             let msg = `Total students in sem ${sem} and department ${department} are : \n`;
                             for (const student of students) {
-                                msg += student.name + " " + student.number + "\n" + student.rollnumber + "\n";
+                                msg += student.name + " " + student.number + "\n";
                             }
                             await message.reply(msg);
                         })
@@ -185,7 +215,7 @@ client.on('message_create', async message => {
                     // search for assignment in the database
                     const assignments = await findAssignment(sem, department);
                     if (assignments.length == 0) {
-                        await message.reply("No pending assignments found");
+                        await message.reply("You dont have any pending assignment");
                     } else {
                         if (assignments.some(assignment => assignment.subject_name === subject_name)) {
                             try {
@@ -207,17 +237,26 @@ client.on('message_create', async message => {
                                 }
                                 console.log(`Media saved to ${filePath}`);
                             } catch (err) {
-                                await message.reply("Assignment submission failed");
+                                await message.reply("Assignment submission failed" + redCross);
                                 console.error('Failed to download media:', err);
                             }
                         } else {
-                            await message.reply("Assignment not found");
+                            await message.reply("Assignment not found " + questionMark);
                         }
                     }
                 } else {
-                    let msg = "Please select \n\n$1 for Notice\n\n$2_noticeinfo to add notice(only CR)\n\n$3_To See Student Config\n\n$4 to list total student data int your class\n\n$5 to list all assignments";
+                    // add blueCircle before every line of the below message
+
+                    let msg = "*Please select* \n\n";
+                    msg += blueCircle + " $1 For all notices within last 30 days\n\n";
+                    msg += blueCircle + " $2_noticeInfo to add notice(only CR)\n\n";
+                    msg += blueCircle + " $3 To see student configuration\n\n";
+                    msg += blueCircle + " $4 To list total student data int your class\n\n";
+                    msg += blueCircle + " $5 To list all assignments\n\n";
+                    msg += blueCircle + " $Subject + media to submit assignment";
+
                     if (message.body !== "$") {
-                        msg = "Unable to understand your query\n" + msg;
+                        msg = redCross + "Unable to understand your query\n\n" + msg;
                     }
                     await message.reply(msg);
                 }
@@ -227,88 +266,64 @@ client.on('message_create', async message => {
                 const faculty_data = person.data;
                 const faculty_msg = message.body;
                 if (message.body == "$") {
-                    await message.reply("Please select \n\n$1 to create assignment\n_Syntax : $1_sem_subject_optional msg_\n\n$2 to view assignment status\n_Syntax : $2_assignmentNumber_\n\n$3 to download assignments\n_Syntax : $3_assignmentNumber_\n\n$4 to list all students in your department\n_Syntax : $4_year1_");
+                    const menu_msg = "Please select \n\n" +
+                        "$1 to create assignment\n" +
+                        "_Syntax : $1_sem_subject_optional message\n\n" +
+                        "$2 to view assignment status\n" +
+                        "_Syntax : $2\n\n" +
+                        "$3 to download assignments\n" +
+                        "_Syntax : $3_assignmentNumber\n\n" +
+                        "$4 to list all students in your department\n" +
+                        "_Syntax : $4_year1_";
+                    await message.reply(menu_msg);
                 }
                 else if (message.body.startsWith("$1")) {
                     // create assignment
-                    // syntax : $1_sem_subject_optional_msg
+                    // syntax : $1_sem_subject_days_optional_msg
                     try {
-                        const [command, sem, subject, ...optionalMsgParts] = message.body.split('_');
+                        const [command, sem, subject, days, ...optionalMsgParts] = message.body.split('_');
                         const optional_msg = optionalMsgParts.join('_');
-
+                        // deadline only stores date month year doesnot care about time
+                        const deadline = new Date(new Date().setDate(new Date().getDate() + days));
                         // Validate semester
                         const semNumber = parseInt(sem);
                         if (isNaN(semNumber) || semNumber < 1 || semNumber > 8) {
                             await message.reply("Invalid semester");
                             return;
                         }
-
                         // Validate subject
                         if (!subject || subject.trim().length === 0) {
                             await message.reply("Invalid subject name.");
                             return;
                         }
-
                         // Convert subject to uppercase
                         const subjectUpper = subject.trim().toUpperCase();
-
                         console.log({ sem: semNumber, subject: subjectUpper, optional_msg });
-
                         // create folder at ./uploads/department/sem/subject_name
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
                         if (!fs.existsSync(folder_path)) {
                             console.log("New folder created : " + folder_path);
                             fs.mkdirSync(folder_path, { recursive: true });
                         }
-
                         const assignmentData = {
                             semester: semNumber,
                             given_by: faculty_data.name,
                             department: faculty_data.department,
                             subject_name: subjectUpper,
-                            folder_path: folder_path
+                            folder_path: folder_path,
+                            faculty_number: phone_number,
                         };
                         if (optional_msg) {
                             assignmentData.optional_msg = optional_msg;
                         }
-
-
+                        if (deadline) {
+                            assignmentData.deadline = deadline;
+                        }
                         await addAssignment(assignmentData);
 
                     } catch (error) {
                         console.log("Error in $1 ", error);
                     }
-
-
-                    return;
-
-                    // Example of saving a new assignment with an optional message
-                    // folder path is projectdir/uploads/department/sem/subject_name
-                    // create folder if not exists
-                    const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
-                    if (!fs.existsSync(folder_path)) {
-                        console.log("New folder created : " + folder_path);
-                        fs.mkdirSync(folder_path, { recursive: true });
-                    }
-
-                    // create assignment
-                    const newAssignment = new Assignment({
-                        semester: sem,
-                        given_by: faculty_data.name, // Faculty name
-                        department: faculty_data.department,  // Department
-                        subject_name: subject, // Subject name
-                        folder_path: folder_path, // Existing folder path
-                        optional_msg: 'This assignment is to be submitted by next Friday.' // Optional message
-                    });
-                    try {
-                        await newAssignment.save();
-                        await message.reply("Assignment created successfully");
-                    }
-                    catch (error) {
-                        await message.reply("Error creating assignment");
-                        console.error('Error creating assignment:', error);
-                    }
-
                 }
                 else if (message.body.startsWith("$2")) {
                     // Assignment status
@@ -318,7 +333,7 @@ client.on('message_create', async message => {
                     // Download assignments
                     // message.body in this format $3_assignmentNumber
                 }
-                else if (message.body.startsWith("$3")) {
+                else if (message.body.startsWith("$4")) {
                     // list all students in his/her department with the given year
                     // message.body in this format $3_year1 (year values range from 1 to 4)
                     // year 1 shows all students of sem 1 and sem 2 and so on like this
@@ -335,12 +350,12 @@ client.on('message_create', async message => {
                 // example: $_Student_Avronil Banerjee_7_CSE_11000121016";
 
                 // Registrations are closed for both student and faculties
-                if (Config.findOne({ about: "STUDENT" }).add_person == false && Config.findOne({ about: "FACULTY" }).add_person == false) {
+                if (studentConfig.add_person == false && facultyConfig.add_person == false) {
                     await message.reply("Registration feature is disabled");
                     return;
                 }
 
-                const registration_msg = "\n\nYou are not registered in the database\n\n" +
+                const REGISTRATION_MESSAGE = "\n\nYou are not registered in the database\n\n" +
                     "Register yourself in this format below\n\n" +
                     "For Faculty: $_role_name_department\n\n" +
                     "example: $_FACULTY_Manjari Saha_CSE\n\n" +
@@ -353,12 +368,10 @@ client.on('message_create', async message => {
                     // Format: $_ROLE_NAME_DEPARTMENT_SEM_ROLLNUMBER (for students)
                     // Format: $_ROLE_NAME_DEPARTMENT (for faculty)
                     const [_, role, name, department, ...remainingParts] = message.body.split('_').map(part => part.toUpperCase());
-
                     // Validate basic fields
                     if (!role || !name || !department) {
                         throw new Error("Invalid registration format");
                     }
-
                     if (role === "STUDENT") {
                         const [sem, rollnumber] = remainingParts;
                         if (!sem || !rollnumber) {
@@ -366,10 +379,12 @@ client.on('message_create', async message => {
                         }
                         console.log({ role, name, department, sem, rollnumber });
 
-                        if (await Config.findOne({ about: "STUDENT" }).add_person === false) {
+                        if (studentConfig.add_person === false) {
+                            console.log("Here add person is false \n");
                             await message.reply("Registration feature is disabled");
                         } else {
-                            await addPerson(role, {
+                            console.log("Here add person is true \n");
+                            addPerson(role, {
                                 number: phone_number,
                                 name,
                                 sem,
@@ -385,7 +400,8 @@ client.on('message_create', async message => {
                         }
                         console.log({ role, name, department });
 
-                        if (await Config.findOne({ about: "FACULTY" }).add_person === false) {
+                        const facultyConfig = await Config.findOne({ about: "FACULTY" });
+                        if (facultyConfig.add_person === false) {
                             await message.reply("Registration feature is disabled");
                         } else {
                             await addPerson(role, {
@@ -401,7 +417,7 @@ client.on('message_create', async message => {
                     }
                 } catch (error) {
                     console.log("inside registration catch block \n", error);
-                    await message.reply("*Welcome to GCETTS*" + registration_msg);
+                    await message.reply("*Welcome to GCETTS*" + REGISTRATION_MESSAGE);
                 }
             }
         }

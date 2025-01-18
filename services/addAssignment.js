@@ -9,11 +9,15 @@ const addAssignment = async (data) => {
             subject_name: data.subject_name,
             upload_date: data.upload_date,
             folder_path: data.folder_path,
+            faculty_number: data.faculty_number,
         };
 
         // Add optional_msg only if it exists in data
         if (data.optional_msg) {
             assignmentData.optional_msg = data.optional_msg;
+        }
+        if (data.deadline) {
+            assignmentData.deadline = data.deadline;
         }
 
         const newAssignment = new Assignment(assignmentData);
