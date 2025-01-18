@@ -60,7 +60,7 @@ client.on('message_create', async message => {
                 const name = student_data.name;
 
                 console.log("Message from : ", student_data.name);
-                // $1 get notices, $2 add notice, $3 for student config, $4 list all students, add media to upload assignment
+                // $1 get notices, $2 add notice, $3 for student config, $4 list all students, $5 list all assignments, add media to upload assignment
                 if (message.body.startsWith("$1")) {
                     // get notice updates
                     try {
@@ -177,11 +177,11 @@ client.on('message_create', async message => {
                         }
                         await message.reply(msg);
                     }
-                }
-                else if (message.hasMedia) {
-                    // with media students only provide assignment number
-                    const subject_name = message.body.toUpperCase();
-
+                } else if (message.hasMedia) {
+                    console.log("Media found");
+                    console.log("Message body : ", message.body, "\n\n");
+                    // with media students only provide $subjectname
+                    const subject_name = message.body.slice(1).toUpperCase();
                     // search for assignment in the database
                     const assignments = await findAssignment(sem, department);
                     if (assignments.length == 0) {
@@ -194,31 +194,28 @@ client.on('message_create', async message => {
                                 // doc_name is rollnumber_name_sem_department_subject_name
                                 const doc_name = rollnumber + "_" + name + "_" + sem + "_" + department + "_" + subject_name;
                                 // Save the media to a file
-                                const folder_path = `./uploads/Assignments/${department}/${sem}/${subject_name}`;
+                                const folder_path = `./uploads/${department}/${sem}/${subject_name}`;
                                 const filePath = `${folder_path}/${doc_name}.${media.mimetype.split('/')[1]}`;
-
                                 // check if folder exists
                                 // if not then reply that, deadline crossed
                                 if (!fs.existsSync(folder_path)) {
-                                    await message.reply("Deadline crossed");
-                                    return;
+                                    await message.reply("Currently submission is closed");
                                 }
                                 else {
                                     fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
                                     await message.reply("Assignment uploaded successfully");
                                 }
-
                                 console.log(`Media saved to ${filePath}`);
                             } catch (err) {
+                                await message.reply("Assignment submission failed");
                                 console.error('Failed to download media:', err);
                             }
-                            await message.reply("Assignment found");
                         } else {
                             await message.reply("Assignment not found");
                         }
                     }
                 } else {
-                    let msg = "Please select \n\n$1 for Notice\n\n$2_noticeinfo to add notice(only CR)\n\n$3_To See Student Config\n\n$4 to list total student data int your class\n\n$5 to edit your info";
+                    let msg = "Please select \n\n$1 for Notice\n\n$2_noticeinfo to add notice(only CR)\n\n$3_To See Student Config\n\n$4 to list total student data int your class\n\n$5 to list all assignments";
                     if (message.body !== "$") {
                         msg = "Unable to understand your query\n" + msg;
                     }
