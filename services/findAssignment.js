@@ -2,11 +2,17 @@
 const mongoose = require('mongoose');
 const Assignment = require('../models/assignment');
 
-// add optional parameter 
-async function findAssignment(semester, department) {
+// add optional parameter subject_name
+async function findAssignment(semester, department, subject_name) {
     try {
-        const assignments = await Assignment.find({ semester: semester, department: department });
-        return assignments;
+        if (subject_name){
+            const assignments = await Assignment.find({ semester: semester, department: department, subject_name: subject_name });
+            return assignments;
+        }
+        else {
+            const assignments = await Assignment.find({ semester: semester, department: department });
+            return assignments;
+        }
     } catch (error) {
         console.error('Error finding assignments:', error);
         return [];

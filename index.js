@@ -4,6 +4,7 @@ const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const moment = require('moment');
 const fs = require('fs');
+const archiver = require('archiver');
 
 // Import models and utility functions
 const Student = require('./models/student');
@@ -265,29 +266,34 @@ client.on('message_create', async message => {
             else if (person && person.type === "FACULTY") {
                 const faculty_data = person.data;
                 const faculty_msg = message.body;
+                const menu_msg = "*Please select* \n\n" +
+                    "$1 to create assignment\n" +
+                    "_Syntax : $1_sem_subject_days_optional message_\n\n" +
+                    "$2 to view assignment status\n" +
+                    "_Syntax : $2_\n\n" +
+                    "$3 to download assignments\n" +
+                    "_Syntax : $3_assignmentNumber_\n\n" +
+                    "$4 to list all students in your department\n" +
+                    "_Syntax : $4_year1_";
                 if (message.body == "$") {
-                    const menu_msg = "Please select \n\n" +
-                        "$1 to create assignment\n" +
-                        "_Syntax : $1_sem_subject_optional message\n\n" +
-                        "$2 to view assignment status\n" +
-                        "_Syntax : $2\n\n" +
-                        "$3 to download assignments\n" +
-                        "_Syntax : $3_assignmentNumber\n\n" +
-                        "$4 to list all students in your department\n" +
-                        "_Syntax : $4_year1_";
                     await message.reply(menu_msg);
                 }
                 else if (message.body.startsWith("$1")) {
                     // create assignment
                     // syntax : $1_sem_subject_days_optional_msg
                     try {
-                        const [command, sem, subject, days, ...optionalMsgParts] = message.body.split('_');
+                        // sem subject is compulsory
+                        // days and optional_msg are optional
+
+                        let [command, sem, subject, days, ...optionalMsgParts] = message.body.split('_');
                         const optional_msg = optionalMsgParts.join('_');
                         // deadline only stores date month year doesnot care about time
-                        const deadline = new Date(new Date().setDate(new Date().getDate() + days));
+                        const deadline = moment().add(days, 'days').endOf('day').toDate();
                         // Validate semester
-                        const semNumber = parseInt(sem);
-                        if (isNaN(semNumber) || semNumber < 1 || semNumber > 8) {
+                        sem = parseInt(sem);
+                        subject = subject.toUpperCase();
+
+                        if (isNaN(sem) || sem < 1 || sem > 8) {
                             await message.reply("Invalid semester");
                             return;
                         }
@@ -298,7 +304,7 @@ client.on('message_create', async message => {
                         }
                         // Convert subject to uppercase
                         const subjectUpper = subject.trim().toUpperCase();
-                        console.log({ sem: semNumber, subject: subjectUpper, optional_msg });
+                        console.log({ sem: sem, subject: subjectUpper, optional_msg });
                         // create folder at ./uploads/department/sem/subject_name
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
                         if (!fs.existsSync(folder_path)) {
@@ -306,7 +312,7 @@ client.on('message_create', async message => {
                             fs.mkdirSync(folder_path, { recursive: true });
                         }
                         const assignmentData = {
-                            semester: semNumber,
+                            semester: sem,
                             given_by: faculty_data.name,
                             department: faculty_data.department,
                             subject_name: subjectUpper,
@@ -320,23 +326,85 @@ client.on('message_create', async message => {
                             assignmentData.deadline = deadline;
                         }
                         await addAssignment(assignmentData);
+                        await message.reply("Assignment created successfully");
 
                     } catch (error) {
+                        await message.reply("Error in $1 " + redCross);
                         console.log("Error in $1 ", error);
                     }
                 }
-                else if (message.body.startsWith("$2")) {
-                    // Assignment status
-                    // message.body in this format $3_assignmentNumber
+                else if (message.body.startsWith("$2")) { // testing pending
+                    try {
+                        // Assignment status
+                        // message.body in this format $2
+                        // list all assignments in the database
+                        // find all assignments where faculty_number == phone number
+                        const assignments = await Assignment.find({ faculty_number: phone_number });
+                        if (assignments.length == 0) {
+                            await message.reply("No assignments found");
+                            return;
+                        }
+                        let msg = "";
+                        for (const assignment of assignments) {
+                            // calculate total number of students in the department and sem of that assignment
+                            const total_students = await Student.countDocuments({ department: faculty_data.department, sem: assignment.semester });
+                            msg += assignment.subject_name + " sem : " + assignment.semester + " submissions : " + assignment.submissions + "/" + total_students + "\n";
+                        }
+                        await message.reply(msg);
+                    } catch (error) {
+                        console.log("Error in $2 ", error);
+                        await message.reply("Error in $2 " + redCross);
+                    }
                 }
                 else if (message.body.startsWith("$3")) {
-                    // Download assignments
-                    // message.body in this format $3_assignmentNumber
+                    try {
+                        // Download assignments
+                        // message.body in this format $3_assignment subject_name
+                        const [_, subject] = message.body.split('_');
+                        const assignments = await findAssignment(faculty_data.department, faculty_data.sem, subject);
+                        if (assignments.length == 0) {
+                            await message.reply("No assignments found");
+                            return;
+                        }
+
+                        await message.reply("Assignments found creating archives please wait");
+                        // Create the ZIP file
+                        const output = fs.createWriteStream('output.zip');
+                        const archive = archiver('zip', { zlib: { level: 9 } });
+
+                        // Handle events
+                        output.on('close', () => console.log(`Archive created: ${archive.pointer()} bytes`));
+                        archive.on('error', (err) => console.error(err));
+
+                        // Pipe the archive to the output file
+                        archive.pipe(output);
+
+                        // Add folder to the archive
+                        const pdf_path = `./uploads/${faculty_data.department}/${faculty_data.sem}/${subject}`;
+
+                        // check if ./Archives exists
+                        if (!fs.existsSync('./Archives')) {
+                            fs.mkdirSync('./Archives', { recursive: true });
+                        }
+
+                        archive.directory(pdf_path, './Archives'); // Replace 'foldername/' with your folder name
+
+                        // Finalize the archive
+                        archive.finalize();
+
+                        await message.reply("Archives created successfully");
+                    } catch (error) {
+                        console.log("Error in $3 ", error);
+                        await message.reply("Error in $3 " + redCross);
+                    }
                 }
                 else if (message.body.startsWith("$4")) {
                     // list all students in his/her department with the given year
                     // message.body in this format $3_year1 (year values range from 1 to 4)
                     // year 1 shows all students of sem 1 and sem 2 and so on like this
+                }
+                else {
+                    await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
                 }
             }
             // Not in database

@@ -37,8 +37,8 @@ const assignmentSchema = new mongoose.Schema({
         type: String,    // Optional message
         required: false  // Not required field
     },
-    // every single assignment is intended for many students, so status holds number of submissions
-    status: {
+    // every single assignment is intended for many students, so submission holds number of submissions
+    submissions: {
         type: Number,
         default: 0
     },
