@@ -284,7 +284,6 @@ client.on('message_create', async message => {
                     try {
                         // sem subject is compulsory
                         // days and optional_msg are optional
-
                         let [command, sem, subject, days, ...optionalMsgParts] = message.body.split('_');
                         const optional_msg = optionalMsgParts.join('_');
                         // deadline only stores date month year doesnot care about time
@@ -292,7 +291,6 @@ client.on('message_create', async message => {
                         // Validate semester
                         sem = parseInt(sem);
                         subject = subject.toUpperCase();
-
                         if (isNaN(sem) || sem < 1 || sem > 8) {
                             await message.reply("Invalid semester");
                             return;
@@ -305,7 +303,7 @@ client.on('message_create', async message => {
                         // Convert subject to uppercase
                         const subjectUpper = subject.trim().toUpperCase();
                         console.log({ sem: sem, subject: subjectUpper, optional_msg });
-                        // create folder at ./uploads/department/sem/subject_name
+
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
                         if (!fs.existsSync(folder_path)) {
                             console.log("New folder created : " + folder_path);
@@ -361,37 +359,31 @@ client.on('message_create', async message => {
                         // Download assignments
                         // message.body in this format $3_assignment subject_name
                         const [_, subject] = message.body.split('_');
-                        const assignments = await findAssignment(faculty_data.department, faculty_data.sem, subject);
-                        if (assignments.length == 0) {
+                        // find assignments where subject_name is subject, faculty_number is phone_number
+                        const assignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number });
+                        if (!assignment) {
                             await message.reply("No assignments found");
                             return;
                         }
-
                         await message.reply("Assignments found creating archives please wait");
                         // Create the ZIP file
                         const output = fs.createWriteStream('output.zip');
                         const archive = archiver('zip', { zlib: { level: 9 } });
-
                         // Handle events
                         output.on('close', () => console.log(`Archive created: ${archive.pointer()} bytes`));
                         archive.on('error', (err) => console.error(err));
-
                         // Pipe the archive to the output file
                         archive.pipe(output);
-
                         // Add folder to the archive
-                        const pdf_path = `./uploads/${faculty_data.department}/${faculty_data.sem}/${subject}`;
-
-                        // check if ./Archives exists
-                        if (!fs.existsSync('./Archives')) {
-                            fs.mkdirSync('./Archives', { recursive: true });
+                        const pdf_path = `./uploads/${faculty_data.department}/${assignment.sem}/${subject}`;
+                        // check if ./Archives/department/semester exists
+                        const archive_path = `./Archives/${faculty_data.department}/${assignment.semester}`;
+                        if (!fs.existsSync(archive_path)) {
+                            fs.mkdirSync(archive_path, { recursive: true });
                         }
-
-                        archive.directory(pdf_path, './Archives'); // Replace 'foldername/' with your folder name
-
+                        archive.directory(pdf_path, archive_path); // Replace 'foldername/' with your folder name
                         // Finalize the archive
                         archive.finalize();
-
                         await message.reply("Archives created successfully");
                     } catch (error) {
                         console.log("Error in $3 ", error);
