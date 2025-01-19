@@ -62,7 +62,7 @@ client.on('message_create', async message => {
         if (!studentConfig || !facultyConfig) {
             throw new Error('Required configuration not found');
         }
-
+        
         // Rest of your message handling code can now use studentConfig and facultyConfig
 
         if (message.id.fromMe == false &&
@@ -209,6 +209,11 @@ client.on('message_create', async message => {
                         await message.reply(msg);
                     }
                 } else if (message.hasMedia) {
+                    // pending features
+                    // assignment overwrite // implemented not tested
+                    // increment submission count  // implemented not tested
+                    // check if deadline is crossed // implemented not tested
+
                     console.log("Media found");
                     console.log("Message body : ", message.body, "\n\n");
                     // with media students only provide $subjectname
@@ -218,7 +223,12 @@ client.on('message_create', async message => {
                     if (assignments.length == 0) {
                         await message.reply("You dont have any pending assignment");
                     } else {
-                        if (assignments.some(assignment => assignment.subject_name === subject_name)) {
+                        if (assignments.some(assignment => {
+                            // check if todays date is <= deadline date
+                            const today = moment().format('YYYY-MM-DD');
+                            const deadline = moment(assignment.deadline).format('YYYY-MM-DD');
+                            return today <= deadline && assignment.subject_name === subject_name
+                        })) {
                             try {
                                 // Download the media
                                 const media = await message.downloadMedia();
@@ -230,11 +240,21 @@ client.on('message_create', async message => {
                                 // check if folder exists
                                 // if not then reply that, deadline crossed
                                 if (!fs.existsSync(folder_path)) {
+
                                     await message.reply("Currently submission is closed");
                                 }
                                 else {
-                                    fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
-                                    await message.reply("Assignment uploaded successfully");
+                                    // check if file_path file already exists
+                                    if (fs.existsSync(filePath)) {
+                                        fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
+                                        await message.reply("Assignment overwritten successfully");
+                                    }
+                                    else {
+                                        fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
+                                        // increment submission count of that assignment
+                                        await Assignment.updateOne({ subject_name: subject_name, faculty_number: phone_number, semester: sem }, { $inc: { submissions: 1 } });
+                                        await message.reply("Assignment uploaded successfully");
+                                    }
                                 }
                                 console.log(`Media saved to ${filePath}`);
                             } catch (err) {
@@ -278,7 +298,7 @@ client.on('message_create', async message => {
                 if (message.body == "$") {
                     await message.reply(menu_msg);
                 }
-                else if (message.body.startsWith("$1")) {
+                else if (message.body.startsWith("$1")) { // working
                     // create assignment
                     // syntax : $1_sem_subject_days_optional_msg
                     try {
@@ -298,6 +318,13 @@ client.on('message_create', async message => {
                         // Validate subject
                         if (!subject || subject.trim().length === 0) {
                             await message.reply("Invalid subject name.");
+                            return;
+                        }
+                        // if assignment with same subject and same faculty_number exists
+                        // then reply that assignment already exists and will be deleted after deadline
+                        const checkAssignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number, semester: sem });
+                        if (checkAssignment) {
+                            await message.reply("Assignment already exists and will be deleted after deadline");
                             return;
                         }
                         // Convert subject to uppercase
@@ -354,15 +381,23 @@ client.on('message_create', async message => {
                         await message.reply("Error in $2 " + redCross);
                     }
                 }
-                else if (message.body.startsWith("$3")) {
+                else if (message.body.startsWith("$3")) { // Download assignments
                     try {
-                        // Download assignments
-                        // message.body in this format $3_assignment subject_name
-                        const [_, subject] = message.body.split('_');
+                        // message.body in this format $3_subjectName
+                        let [_, subject] = message.body.split('_');
+                        if (!subject) {
+                            await message.reply("Please provide subject name in this format $3_subjectName");
+                            return;
+                        }
+                        subject = subject.toUpperCase();
                         // find assignments where subject_name is subject, faculty_number is phone_number
                         const assignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number });
                         if (!assignment) {
-                            await message.reply("No assignments found");
+                            await message.reply("No assignments found\nProvide subject name in this format $3_subjectName");
+                            return;
+                        }
+                        if (assignment.submissions == 0) {
+                            await message.reply("0 submissions for this assignment");
                             return;
                         }
                         await message.reply("Assignments found creating archives please wait");
