@@ -224,7 +224,7 @@ client.on('message_create', async message => {
                             await message.reply("Assignments found");
                             let msg = "";
                             for (const assignment of assignments) {
-                                msg += assignment.subject_name + "\n";
+                                msg += assignment.subject_name + " " + assignment.given_by + "\n";
                             }
                             await message.reply(msg);
                         }
@@ -248,7 +248,6 @@ client.on('message_create', async message => {
                         await message.reply("You dont have any pending assignment");
                     } else {
                         if (assignments.some(assignment => {
-                            // check if todays date is <= deadline date
                             const today = moment().format('YYYY-MM-DD');
                             const deadline = moment(assignment.deadline).format('YYYY-MM-DD');
                             return today <= deadline && assignment.subject_name === subject_name
@@ -260,7 +259,14 @@ client.on('message_create', async message => {
                                 const doc_name = rollnumber + "_" + name + "_" + sem + "_" + department + "_" + subject_name;
                                 // Save the media to a file
                                 const folder_path = `./uploads/${department}/${sem}/${subject_name}`;
-                                const filePath = `${folder_path}/${doc_name}.${media.mimetype.split('/')[1]}`;
+                                const format = media.mimetype.split('/')[1];
+                                const filePath = `${folder_path}/${doc_name}.${format}`;
+
+                                if (format.toUpperCase() != "PDF" && format.toUpperCase() != "PPTX" && format.toUpperCase() != "DOC") {
+                                    await message.reply("*Invalid format* " + format);
+                                    return;
+                                }
+
                                 // check if folder exists
                                 // if not then reply that, deadline crossed
                                 if (!fs.existsSync(folder_path)) {
@@ -275,8 +281,14 @@ client.on('message_create', async message => {
                                     }
                                     else {
                                         fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
-                                        // increment submission count of that assignment
-                                        await Assignment.updateOne({ subject_name: subject_name, faculty_number: phone_number, semester: sem }, { $inc: { submissions: 1 } });
+                                        // increment submission count of that assignment 
+                                        const currDoc = await Assignment.findOne({
+                                            subject_name: subject_name,
+                                            semester: sem
+                                        });
+                                        if (!currDoc)
+                                            console.log("currDoc is NULL\n***********************************");
+                                        await Assignment.updateOne({ subject_name: subject_name, semester: sem }, { submissions: currDoc.submissions + 1 });
                                         await message.reply("Assignment uploaded successfully");
                                     }
                                 }
@@ -322,9 +334,9 @@ client.on('message_create', async message => {
                     "$2 to view assignment status\n" +
                     "_Syntax : $2_\n\n" +
                     "$3 to download assignments\n" +
-                    "_Syntax : $3_assignmentNumber_\n\n" +
+                    "_Syntax : $3_subjectName_\n\n" +
                     "$4 to list all students in your department\n" +
-                    "_Syntax : $4_year1_";
+                    "_Syntax : $4_sem_";
                 if (message_body == "$") {
                     await message.reply(menu_msg);
                 }
@@ -377,7 +389,34 @@ client.on('message_create', async message => {
                             assignmentData.optional_msg = optionalMsgParts[1].trim();
                         }
                         await addAssignment(assignmentData);
+
                         await message.reply("Assignment created successfully");
+                        const AssignmentDataFromDB = await Assignment.findOne({ faculty_number: phone_number, subject_name: subject, semester: sem });
+                        // notify all students in the department in the sem about this assignment
+                        try {
+                            const students = await Student.find({ department: faculty_data.department, sem: sem });
+                            if (students.length == 0) {
+                                await message.reply("No students found in this department and semester");
+                                return;
+                            }
+                            for (const student of students) {
+                                const phoneNumber = "91" + student.number; // Replace with the recipient's phone number
+
+                                // debug line
+                                // console.log("XXXXXXXX::::::::" + typeof assignmentData.deadline);
+                                     
+                                const message = `${noticeEmoji} New Assignment from ${faculty_data.name} : ${subject}\nDeadline : ${AssignmentDataFromDB.deadline.toDateString().slice(0, -5)}`;
+                                try {
+                                    await client.sendMessage(`${phoneNumber}@c.us`, message);
+                                    console.log('Message sent successfully!');
+                                } catch (err) {
+                                    console.error('Error sending message:', err);
+                                }
+                            }
+                        } catch (error) {
+                            await message.reply("Unable to send reminder to students " + redCross);
+                            console.log(error);
+                        }
 
                     } catch (error) {
                         await message.reply("Error in $1 " + redCross);
@@ -409,12 +448,12 @@ client.on('message_create', async message => {
                 }
                 else if (message_body.startsWith("$3")) { // Download assignments
                     try {
-                        const [_, subject] = message_body.split('_');
+                        let [_, subject] = message_body.split('_');
+                        subject = subject.trim();
                         if (!subject) {
                             await message.reply("Please provide subject name in this format $3_subjectName");
                             return;
                         }
-
                         const assignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number });
                         if (!assignment) {
                             await message.reply("No assignments found\nProvide subject name in this format $3_subjectName");
