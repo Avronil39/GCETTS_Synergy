@@ -1,5 +1,5 @@
 // Import required modules
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const mongoose = require('mongoose');
 const moment = require('moment');
@@ -433,32 +433,70 @@ client.on('message_create', async message => {
                             fs.mkdirSync(archive_path, { recursive: true });
                         }
 
-                        // Create zip file in the archive path
+                        // Create a filename that includes the subject and current date/time
                         const timestamp = moment().format('YYYY-MM-DD_HH-mm-ss');
                         const zipFileName = `${subject}_${timestamp}.zip`;
                         const zipFilePath = `${archive_path}/${zipFileName}`;
+
+                        // Create a new file to write our zip to
                         const output = fs.createWriteStream(zipFilePath);
+
+                        // Create a new zip archive with maximum compression
                         const archive = archiver('zip', { zlib: { level: 9 } });
 
+                        // When the zip is fully created, log its location and size
                         output.on('close', () => console.log(`Archive created at ${zipFilePath}: ${archive.pointer()} bytes`));
+
+                        // If something goes wrong while creating the zip, show the error
                         archive.on('error', (err) => console.error(err));
 
+                        // Connect the zip creator to our output file
                         archive.pipe(output);
 
+                        // Set the folder path where student submissions are stored
                         const pdf_path = `./uploads/${faculty_data.department}/${assignment.semester}/${subject}`;
+
+                        // Add all files from the submissions folder into the zip
                         archive.directory(pdf_path, false);
 
+                        // Create the final zip file
                         await archive.finalize();
-                        await message.reply(`Archives created successfully at ${zipFilePath}`);
+
+                        // Wait for the archive to finish writing
+                        await new Promise((resolve) => output.on('close', resolve));
+
+                        // Read the file as a buffer and convert to base64
+                        const fileBuffer = fs.readFileSync(zipFilePath);
+                        const media = new MessageMedia(
+                            'application/zip',
+                            fileBuffer.toString('base64'),
+                            zipFileName
+                        );
+
+                        // Send the file
+                        await message.reply(media);
+
+                        // Optionally cleanup the zip file after sending
+                        // fs.unlinkSync(zipFilePath);
                     } catch (error) {
                         console.log("Error in $3 ", error);
                         await message.reply("Error in $3 " + redCross);
                     }
                 }
                 else if (message_body.startsWith("$4")) {
-                    // list all students in his/her department with the given year
-                    // message_body in this format $3_year1 (year values range from 1 to 4)
-                    // year 1 shows all students of sem 1 and sem 2 and so on like this
+                    // list all students in his/her department with the given sem
+                    // message_body in this format $3_1 (sem values range from 1 to 8)
+                    const [_, sem] = message_body.split('_');
+                    if (!sem || isNaN(sem) || sem < 1 || sem > 8) {
+                        await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
+                        return;
+                    }
+                    const students = await Student.find({ department: faculty_data.department, sem: sem });
+                    let msg = "";
+                    for (const student of students) {
+                        msg += student.name + " " + student.number + "\n";
+                    }
+                    await message.reply(msg);
                 }
                 else {
                     await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
