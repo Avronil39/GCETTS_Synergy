@@ -17,13 +17,15 @@ const getNotices = require('./services/getNotices');
 const addNotice = require('./services/addNotice');
 const addAssignment = require('./services/addAssignment');
 const findAssignment = require('./services/findAssignment');
+const BugReport = require('./models/bugreport');
 
+console.clear();
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('Connected to MongoDB'))
     .catch(err => console.error('Could not connect to MongoDB...', err));
 
-// Initialize WhatsApp client
+// Initialize WhatsApp client with local authentication
 const client = new Client({
     authStrategy: new LocalAuth({
         dataPath: 'Auth'
@@ -38,51 +40,70 @@ client.on('qr', qr => {
 // 2. Ready event
 client.on('ready', () => {
     // console.clear(); // Clear console when ready
+    console.clear();
     console.log('Client is ready!'); // Log that the client is ready
 });
 
-const calendarEmoji = String.fromCodePoint(0x1F4C5); // 📅
-const noticeEmoji = String.fromCodePoint(0x1F4E2);   // 📢
-const rightArrowEmoji = String.fromCodePoint(0x27A1); // ➡️
-const greenTick = String.fromCodePoint(0x2705); // ✅
-const redCross = String.fromCodePoint(0x274C); // ❌
-const blueCircle = String.fromCodePoint(0x1F535); // 🔵
-const questionMark = String.fromCodePoint(0x2753); // ❓
+// Define emoji constants for better readability and reuse
+const calendarEmoji = String.fromCodePoint(0x1F4C5);  // Calendar emoji: 📅
+const noticeEmoji = String.fromCodePoint(0x1F4E2);    // Loudspeaker emoji: 📢
+const rightArrowEmoji = String.fromCodePoint(0x27A1); // Right arrow emoji: ➡️
+const greenTick = String.fromCodePoint(0x2705);       // Green checkmark emoji: ✅
+const redCross = String.fromCodePoint(0x274C);        // Red X emoji: ❌
+const blueCircle = String.fromCodePoint(0x1F535);     // Blue circle emoji: 🔵
+const questionMark = String.fromCodePoint(0x2753);    // Question mark emoji: ❓
+const hiEmoji = String.fromCodePoint(0x1F44B);        // Waving hand emoji: 👋
 
-// Handle incoming messages
+// Main message handler for all incoming WhatsApp messages
 client.on('message_create', async message => {
     try {
-        // Fetch configs once at the start
+        // Fetch configuration settings for both student and faculty at start
         const [studentConfig, facultyConfig] = await Promise.all([
             Config.findOne({ about: "STUDENT" }),
             Config.findOne({ about: "FACULTY" })
         ]);
 
-        // Validate configs
+        // Ensure both configurations exist before proceeding
         if (!studentConfig || !facultyConfig) {
             throw new Error('Required configuration not found');
         }
-        
-        // Rest of your message handling code can now use studentConfig and facultyConfig
 
+        // Only process messages that:
+        // 1. Are not from the bot itself (fromMe == false)
+        // 2. Are from individual chats (@c.us)
+        // 3. Start with '$' command prefix
         if (message.id.fromMe == false &&
             message.id.remote.endsWith('@c.us') &&
             message.body.startsWith('$')) {
 
+            // Extract phone number from the sender's ID
             const phone_number = message.from.slice(2, 12);
+            // Look up the sender in the database
             const person = await findPerson(phone_number);
+            // Convert message to uppercase for case-insensitive commands
+            const message_body = message.body.toUpperCase();
 
-            // Handle student messages
+            // Handle messages from registered students
             if (person && person.type === "STUDENT") {
+                // Extract student information
                 const student_data = person.data;
                 const sem = student_data.sem;
                 const department = student_data.department;
                 const rollnumber = student_data.roll;
                 const name = student_data.name;
 
+                // Log message receipt
                 console.log("Message from : ", student_data.name);
-                // $1 get notices, $2 add notice, $3 for student config, $4 list all students, $5 list all assignments, add media to upload assignment
-                if (message.body.startsWith("$1")) { // working
+
+                // Command handlers:
+                // $1 - Get notices
+                // $2 - Add notice (CR only)
+                // $3 - View/edit config
+                // $4 - List class students
+                // $5 - List assignments
+                // Media - Submit assignment
+
+                if (message_body.startsWith("$1")) { // working
                     // get notice updates
                     try {
                         const notices = await getNotices(sem, department);
@@ -110,19 +131,19 @@ client.on('message_create', async message => {
                         await message.reply("Error fetching notice");
                     }
 
-                } else if (message.body.startsWith("$2")) {
+                } else if (message_body.startsWith("$2")) {
                     // add notice only cr can do this
                     if (student_data.iscr == true) {
                         if (studentConfig.add_notice == false) {
                             await message.reply("System is locked by CR");
                             return;
                         }
-                        const notice_info = message.body.slice(3);
+                        const [_, notice_info] = message_body.split('_').map(part => part.trim());
+
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
                         } else {
                             const notice_data = {
-                                date: moment().format('YYYY-MM-DD'),
                                 sem: sem,
                                 department: department,
                                 info: notice_info,
@@ -140,73 +161,76 @@ client.on('message_create', async message => {
                     else {
                         await message.reply("You are not authorized to do this");
                     }
-                } else if (message.body.startsWith("$3")) {
+                } else if (message_body.startsWith("$3")) {
                     // view or edit config
                     try {
+                        const [_, toggle_config] = message_body.split('_').map((part) => part.trim());
                         let current_config = await Config.findOne({ about: "STUDENT" });
                         const current_config_str = `1 Add person ${current_config.add_person ? greenTick : redCross}` +
                             `\n2 Delete person ${current_config.delete_person ? greenTick : redCross}` +
                             `\n3 Add notice ${current_config.add_notice ? greenTick : redCross}` +
                             `\n4 Delete notice ${current_config.delete_notice ? greenTick : redCross}`;
-                        if (message.body.length <= 2) {
-                            // user only wants to view config
-                            await message.reply("$3_toggle to toggle config\n\nCurrent config is : \n" + current_config_str);
-                            console.log("Current config is : \n" + current_config_str);
+                        let reply_msg = "$3_toggle to toggle config *(only CR)*\n\nCurrent config is : \n" + current_config_str;
+                        if (!toggle_config) {
+                            await message.reply(reply_msg);
+                            return;
                         }
-                        else if (message.body.length > 2) {
-                            // user might want to toggle config
+                        if (toggle_config == "TOGGLE") {
                             if (student_data.iscr == true) {
-                                if (message.body === "$3_toggle") {
-                                    current_config.add_person = !(current_config.add_person);
-                                    current_config.delete_person = !(current_config.delete_person);
-                                    current_config.add_notice = !(current_config.add_notice);
-                                    current_config.delete_notice = !(current_config.delete_notice);
-                                    current_config.save();
-                                    if (current_config.add_person == true) {
-                                        await message.reply("System Unlocked by " + name);
-                                    }
-                                    else {
-                                        await message.reply("System Locked by " + name);
-                                    }
+                                current_config.add_person = !(current_config.add_person);
+                                current_config.delete_person = !(current_config.delete_person);
+                                current_config.add_notice = !(current_config.add_notice);
+                                current_config.delete_notice = !(current_config.delete_notice);
+                                current_config.save();
+                                if (current_config.add_person == true) {
+                                    await message.reply("System Unlocked by " + name);
                                 }
                                 else {
-                                    message.reply("Please use $3_toggle to toggle config");
+                                    await message.reply("System Locked by " + name);
                                 }
                             }
                             else {
-                                message.reply("Only CR can edit config");
+                                await message.reply("Only CR can toggle config");
                             }
                         }
-
+                        else {
+                            console.log(`Invalid command ${toggle_config}`);
+                            await message.reply("Invalid command" + redCross + "\n" + reply_msg);
+                        }
                     } catch (error) {
                         console.log("Error in $3 ", error);
                         await message.reply(`Error in $3 ${redCross}`);
                     }
-                } else if (message.body.startsWith("$4")) {
+                } else if (message_body.startsWith("$4")) {
                     // list total student data with same sem and department
-                    Student.find({ sem: sem, department: department })
-                        .then(async students => {
-                            let msg = `Total students in sem ${sem} and department ${department} are : \n`;
-                            for (const student of students) {
-                                msg += student.name + " " + student.number + "\n";
-                            }
-                            await message.reply(msg);
-                        })
-                        .catch(error => {
-                            console.error('Error fetching student data:', error);
-                        });
-                } else if (message.body.startsWith("$5")) {
-                    // return list of all assignments
-                    const assignments = await findAssignment(sem, department);
-                    if (assignments.length == 0) {
-                        await message.reply("No pending assignments found");
-                    } else {
-                        await message.reply("Assignments found");
-                        let msg = "";
-                        for (const assignment of assignments) {
-                            msg += assignment.subject_name + "\n";
+                    try {
+                        const students = await Student.find({ sem: sem, department: department });
+                        let msg = `Total students in sem ${sem} and department ${department} are : \n`;
+                        for (const student of students) {
+                            msg += student.name + " " + student.number + "\n";
                         }
                         await message.reply(msg);
+                    } catch (error) {
+                        console.error('Error fetching student data:', error);
+                        await message.reply("Error fetching student data");
+                    }
+                } else if (message_body.startsWith("$5")) {
+                    // return list of all assignments
+                    try {
+                        const assignments = await findAssignment(sem, department);
+                        if (assignments.length == 0) {
+                            await message.reply("No pending assignments found");
+                        } else {
+                            await message.reply("Assignments found");
+                            let msg = "";
+                            for (const assignment of assignments) {
+                                msg += assignment.subject_name + "\n";
+                            }
+                            await message.reply(msg);
+                        }
+                    } catch (error) {
+                        console.error('Error fetching assignments:', error);
+                        await message.reply("Error fetching assignments");
                     }
                 } else if (message.hasMedia) {
                     // pending features
@@ -215,9 +239,9 @@ client.on('message_create', async message => {
                     // check if deadline is crossed // implemented not tested
 
                     console.log("Media found");
-                    console.log("Message body : ", message.body, "\n\n");
+                    console.log("Message body : ", message_body, "\n\n");
                     // with media students only provide $subjectname
-                    const subject_name = message.body.slice(1).toUpperCase();
+                    const subject_name = message_body.slice(1).trim();
                     // search for assignment in the database
                     const assignments = await findAssignment(sem, department);
                     if (assignments.length == 0) {
@@ -276,16 +300,22 @@ client.on('message_create', async message => {
                     msg += blueCircle + " $5 To list all assignments\n\n";
                     msg += blueCircle + " $Subject + media to submit assignment";
 
-                    if (message.body !== "$") {
+                    if (message_body !== "$") {
                         msg = redCross + "Unable to understand your query\n\n" + msg;
                     }
                     await message.reply(msg);
                 }
             }
-            // Handle faculty messages
+            // Handle messages from registered faculty
             else if (person && person.type === "FACULTY") {
+                // Faculty command handlers:
+                // $1 - Create assignment
+                // $2 - View assignment status
+                // $3 - Download assignments
+                // $4 - List department students
+
                 const faculty_data = person.data;
-                const faculty_msg = message.body;
+                const faculty_msg = message_body;
                 const menu_msg = "*Please select* \n\n" +
                     "$1 to create assignment\n" +
                     "_Syntax : $1_sem_subject_days_optional message_\n\n" +
@@ -295,28 +325,24 @@ client.on('message_create', async message => {
                     "_Syntax : $3_assignmentNumber_\n\n" +
                     "$4 to list all students in your department\n" +
                     "_Syntax : $4_year1_";
-                if (message.body == "$") {
+                if (message_body == "$") {
                     await message.reply(menu_msg);
                 }
-                else if (message.body.startsWith("$1")) { // working
+                else if (message_body.startsWith("$1")) { // working
                     // create assignment
                     // syntax : $1_sem_subject_days_optional_msg
                     try {
-                        // sem subject is compulsory
-                        // days and optional_msg are optional
-                        let [command, sem, subject, days, ...optionalMsgParts] = message.body.split('_');
-                        const optional_msg = optionalMsgParts.join('_');
-                        // deadline only stores date month year doesnot care about time
-                        const deadline = moment().add(days, 'days').endOf('day').toDate();
+                        let [command, sem, subject, ...optionalMsgParts] = message_body.split('_');
+                        sem = parseInt(sem.trim());
+                        subject = subject.trim();
+
                         // Validate semester
-                        sem = parseInt(sem);
-                        subject = subject.toUpperCase();
                         if (isNaN(sem) || sem < 1 || sem > 8) {
                             await message.reply("Invalid semester");
                             return;
                         }
                         // Validate subject
-                        if (!subject || subject.trim().length === 0) {
+                        if (!subject || subject.length === 0) {
                             await message.reply("Invalid subject name.");
                             return;
                         }
@@ -324,12 +350,10 @@ client.on('message_create', async message => {
                         // then reply that assignment already exists and will be deleted after deadline
                         const checkAssignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number, semester: sem });
                         if (checkAssignment) {
-                            await message.reply("Assignment already exists and will be deleted after deadline");
+                            await message.reply("Assignment already exists and will be deleted after deadline " + redCross + `\nDeadline : ${checkAssignment.deadline.toDateString()}`);
                             return;
                         }
-                        // Convert subject to uppercase
-                        const subjectUpper = subject.trim().toUpperCase();
-                        console.log({ sem: sem, subject: subjectUpper, optional_msg });
+                        console.log({ sem: sem, subject: subject });
 
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
                         if (!fs.existsSync(folder_path)) {
@@ -340,15 +364,17 @@ client.on('message_create', async message => {
                             semester: sem,
                             given_by: faculty_data.name,
                             department: faculty_data.department,
-                            subject_name: subjectUpper,
+                            subject_name: subject,
                             folder_path: folder_path,
                             faculty_number: phone_number,
                         };
-                        if (optional_msg) {
-                            assignmentData.optional_msg = optional_msg;
+                        if (optionalMsgParts.length > 0) {
+                            // default deadline is 7 days from today
+                            const days = optionalMsgParts[0].trim();
+                            assignmentData.deadline = moment().add(days, 'days').endOf('day');
                         }
-                        if (deadline) {
-                            assignmentData.deadline = deadline;
+                        if (optionalMsgParts.length > 1) {
+                            assignmentData.optional_msg = optionalMsgParts[1].trim();
                         }
                         await addAssignment(assignmentData);
                         await message.reply("Assignment created successfully");
@@ -358,10 +384,10 @@ client.on('message_create', async message => {
                         console.log("Error in $1 ", error);
                     }
                 }
-                else if (message.body.startsWith("$2")) { // testing pending
+                else if (message_body.startsWith("$2")) { // testing pending
                     try {
                         // Assignment status
-                        // message.body in this format $2
+                        // message_body in this format $2
                         // list all assignments in the database
                         // find all assignments where faculty_number == phone number
                         const assignments = await Assignment.find({ faculty_number: phone_number });
@@ -381,16 +407,14 @@ client.on('message_create', async message => {
                         await message.reply("Error in $2 " + redCross);
                     }
                 }
-                else if (message.body.startsWith("$3")) { // Download assignments
+                else if (message_body.startsWith("$3")) { // Download assignments
                     try {
-                        // message.body in this format $3_subjectName
-                        let [_, subject] = message.body.split('_');
+                        const [_, subject] = message_body.split('_');
                         if (!subject) {
                             await message.reply("Please provide subject name in this format $3_subjectName");
                             return;
                         }
-                        subject = subject.toUpperCase();
-                        // find assignments where subject_name is subject, faculty_number is phone_number
+
                         const assignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number });
                         if (!assignment) {
                             await message.reply("No assignments found\nProvide subject name in this format $3_subjectName");
@@ -400,49 +424,51 @@ client.on('message_create', async message => {
                             await message.reply("0 submissions for this assignment");
                             return;
                         }
+
                         await message.reply("Assignments found creating archives please wait");
-                        // Create the ZIP file
-                        const output = fs.createWriteStream('output.zip');
-                        const archive = archiver('zip', { zlib: { level: 9 } });
-                        // Handle events
-                        output.on('close', () => console.log(`Archive created: ${archive.pointer()} bytes`));
-                        archive.on('error', (err) => console.error(err));
-                        // Pipe the archive to the output file
-                        archive.pipe(output);
-                        // Add folder to the archive
-                        const pdf_path = `./uploads/${faculty_data.department}/${assignment.sem}/${subject}`;
-                        // check if ./Archives/department/semester exists
+
+                        // Create the archive directory path
                         const archive_path = `./Archives/${faculty_data.department}/${assignment.semester}`;
                         if (!fs.existsSync(archive_path)) {
                             fs.mkdirSync(archive_path, { recursive: true });
                         }
-                        archive.directory(pdf_path, archive_path); // Replace 'foldername/' with your folder name
-                        // Finalize the archive
-                        archive.finalize();
-                        await message.reply("Archives created successfully");
+
+                        // Create zip file in the archive path
+                        const timestamp = moment().format('YYYY-MM-DD_HH-mm-ss');
+                        const zipFileName = `${subject}_${timestamp}.zip`;
+                        const zipFilePath = `${archive_path}/${zipFileName}`;
+                        const output = fs.createWriteStream(zipFilePath);
+                        const archive = archiver('zip', { zlib: { level: 9 } });
+
+                        output.on('close', () => console.log(`Archive created at ${zipFilePath}: ${archive.pointer()} bytes`));
+                        archive.on('error', (err) => console.error(err));
+
+                        archive.pipe(output);
+
+                        const pdf_path = `./uploads/${faculty_data.department}/${assignment.semester}/${subject}`;
+                        archive.directory(pdf_path, false);
+
+                        await archive.finalize();
+                        await message.reply(`Archives created successfully at ${zipFilePath}`);
                     } catch (error) {
                         console.log("Error in $3 ", error);
                         await message.reply("Error in $3 " + redCross);
                     }
                 }
-                else if (message.body.startsWith("$4")) {
+                else if (message_body.startsWith("$4")) {
                     // list all students in his/her department with the given year
-                    // message.body in this format $3_year1 (year values range from 1 to 4)
+                    // message_body in this format $3_year1 (year values range from 1 to 4)
                     // year 1 shows all students of sem 1 and sem 2 and so on like this
                 }
                 else {
                     await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
                 }
             }
-            // Not in database
+            // Handle registration for new users
             else if (person == null) {
-                // registration portion is completed
-
-                // Register yourself in this format below\n
-                // For Faculty: $_role_name_department\n
-                // example: $_Faculty_Manjari Saha_CSE\n
-                // For Student: $_role_name_department_sem_rollnumber\n
-                // example: $_Student_Avronil Banerjee_7_CSE_11000121016";
+                // Registration formats:
+                // Students: $_STUDENT_NAME_DEPARTMENT_SEM_ROLLNUMBER
+                // Faculty: $_FACULTY_NAME_DEPARTMENT
 
                 // Registrations are closed for both student and faculties
                 if (studentConfig.add_person == false && facultyConfig.add_person == false) {
@@ -462,16 +488,32 @@ client.on('message_create', async message => {
                 try {
                     // Format: $_ROLE_NAME_DEPARTMENT_SEM_ROLLNUMBER (for students)
                     // Format: $_ROLE_NAME_DEPARTMENT (for faculty)
-                    const [_, role, name, department, ...remainingParts] = message.body.split('_').map(part => part.toUpperCase());
+                    const [_, role, name, department, ...remainingParts] = message_body.split('_');
                     // Validate basic fields
                     if (!role || !name || !department) {
                         throw new Error("Invalid registration format");
+                    }
+                    if (department !== "CSE" && department !== "IT" && department !== "TT" && department !== "APM") {
+                        await message.reply(`Invalid department ${redCross}\nDepartments : (CSE , IT, TT, APM)`);
+                        throw new Error("Invalid department\nDepartments : (CSE , IT, TT, APM)");
                     }
                     if (role === "STUDENT") {
                         const [sem, rollnumber] = remainingParts;
                         if (!sem || !rollnumber) {
                             throw new Error("Invalid student registration format");
                         }
+                        if (isNaN(sem) || sem < 1 || sem > 8) {
+                            await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
+                            throw new Error("Invalid semester");
+                        }
+
+                        // some bugs in this code below, will fix later
+                        // const rollnumber_int = Number(rollnumber);
+                        // if (!(Number.isInteger(rollnumber_int) && rollnumber_int > 0 && rollnumber_int === String(rollnumber_int))) {
+                        //     await message.reply("Invalid rollnumber " + redCross + "\nRollnumber must be a positive integer");
+                        //     throw new Error("Invalid rollnumber");
+                        // }
+
                         console.log({ role, name, department, sem, rollnumber });
 
                         if (studentConfig.add_person === false) {
@@ -487,7 +529,7 @@ client.on('message_create', async message => {
                                 roll: rollnumber,
                                 iscr: false
                             });
-                            await message.reply(`Hi ${name}\nthank you for registering`);
+                            await message.reply(`Hi ${name} ${hiEmoji}\nthank you for registering\nSend $ for menu`);
                         }
                     } else if (role === "FACULTY") {
                         if (remainingParts.length > 0) {
@@ -505,9 +547,10 @@ client.on('message_create', async message => {
                                 department,
                                 ishod: false
                             });
-                            await message.reply(`Hi Prof. ${name}\nthank you for registering`);
+                            await message.reply(`Hi Prof. ${name}\nthank you for registering\nSend $ for menu`);
                         }
                     } else {
+                        await message.reply(`Invalid role ${redCross}\nRoles : (STUDENT , FACULTY)`);
                         throw new Error("Invalid role");
                     }
                 } catch (error) {
@@ -522,33 +565,5 @@ client.on('message_create', async message => {
     }
 });
 
-// Initialize the client
+// Initialize WhatsApp client and connect
 client.initialize();
-
-
-// // Create configuration for students
-// const studentConfig = new Config({
-//     about: "Student",
-//     add_person: true,
-//     delete_person: true,
-//     add_notice: true,
-//     delete_notice: true
-// });
-
-// // Create configuration for faculties
-// const facultyConfig = new Config({
-//     about: "Faculty",
-//     add_person: true,
-//     delete_person: true,
-//     add_notice: true,
-//     delete_notice: true
-// });
-
-// // Save to the database
-// studentConfig.save()
-//     .then(() => console.log("Student configuration saved!"))
-//     .catch(err => console.error("Error saving student configuration:", err));
-
-// facultyConfig.save()
-//     .then(() => console.log("Faculty configuration saved!"))
-//     .catch(err => console.error("Error saving faculty configuration:", err));

@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
-
+const moment = require('moment');
 // Define the schema for the "notice" collection
 const noticeSchema = new mongoose.Schema({
   date: {
     type: Date,
-    default: Date.now,  // Default to today's date
+    default: moment(),  // Default to today's date
     required: true      // Notice date (Date)
   },
   sem: {

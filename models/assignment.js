@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const moment = require('moment');
 
 // Define the schema for the "assignments" collection
 const assignmentSchema = new mongoose.Schema({
@@ -26,8 +27,9 @@ const assignmentSchema = new mongoose.Schema({
         required: true   // Required field
     },
     upload_date: {
-        type: String,
-        default: () => new Date().toISOString().split('T')[0]
+        type: Date,
+        default: moment(),
+        required: true
     },
     folder_path: {
         type: String,    // Path where the assignment files are stored
@@ -43,10 +45,8 @@ const assignmentSchema = new mongoose.Schema({
         default: 0
     },
     deadline: {
-        // stores only date month year doesnot care about time
         type: Date,
-        // default 1 week from upload date 
-        default: () => new Date(new Date().setDate(new Date().getDate() + 7)),
+        default: moment().add(7, 'days').endOf('day'),  // Default to today's date
         required: true
     }
 });
