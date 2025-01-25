@@ -20,6 +20,10 @@ const facultySchema = new mongoose.Schema({
     type: Boolean,   // Is head of department
     default: false,  // Default value set to false
     required: true   // Required field
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
   }
 });
 

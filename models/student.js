@@ -29,6 +29,10 @@ const studentSchema = new mongoose.Schema({
         type: Boolean,   // Is CR (Class Representative)
         default: false,  // Default value set to false
         required: true   // Required field
+    },
+    isVerified: {
+        type: Boolean,
+        default: false
     }
 });
 

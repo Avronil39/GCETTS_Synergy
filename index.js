@@ -5,19 +5,29 @@ const mongoose = require('mongoose');
 const moment = require('moment');
 const fs = require('fs');
 const archiver = require('archiver');
+const express = require('express')
 
-// Import models and utility functions
+
+// Import models
 const Student = require('./models/student');
 const Faculty = require('./models/faculty');
 const Config = require('./models/config');
 const Assignment = require('./models/assignment');
-const findPerson = require('./services/findPerson');
-const addPerson = require('./services/addPerson');
-const getNotices = require('./services/getNotices');
-const addNotice = require('./services/addNotice');
-const addAssignment = require('./services/addAssignment');
-const findAssignment = require('./services/findAssignment');
+const Notice = require('./models/notice');
 const BugReport = require('./models/bugreport');
+
+const app = express()
+const port = 3000
+
+app.get('/', (req, res) => {
+    res.send('Hello World!')
+})
+
+app.listen(port, () => {
+    console.log(`Example app listening on port ${port}`)
+})
+
+
 
 console.clear();
 // Connect to MongoDB
@@ -53,6 +63,8 @@ const redCross = String.fromCodePoint(0x274C);        // Red X emoji: ❌
 const blueCircle = String.fromCodePoint(0x1F535);     // Blue circle emoji: 🔵
 const questionMark = String.fromCodePoint(0x2753);    // Question mark emoji: ❓
 const hiEmoji = String.fromCodePoint(0x1F44B);        // Waving hand emoji: 👋
+const redHeart = String.fromCodePoint(0x2764, 0xFE0F); // ❤️
+
 
 // Main message handler for all incoming WhatsApp messages
 client.on('message_create', async message => {
@@ -79,7 +91,17 @@ client.on('message_create', async message => {
             // Extract phone number from the sender's ID
             const phone_number = message.from.slice(2, 12);
             // Look up the sender in the database
-            const person = await findPerson(phone_number);
+            let person_data = await Student.findOne({ number: phone_number });
+            let person;
+            if (person_data) {
+                person = { type: 'STUDENT', data: person_data };
+            }
+            else {
+                person_data = await Faculty.findOne({ number: phone_number });
+                if (person_data) {
+                    person = { type: 'FACULTY', data: person_data };
+                }
+            }
             // Convert message to uppercase for case-insensitive commands
             const message_body = message.body.toUpperCase();
 
@@ -106,7 +128,12 @@ client.on('message_create', async message => {
                 if (message_body.startsWith("$1")) { // working
                     // get notice updates
                     try {
-                        const notices = await getNotices(sem, department);
+                        const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day').toDate();
+                        const notices = await Notice.find({
+                            sem: sem,
+                            department: department,
+                            date: { $gte: thirtyDaysAgo }
+                        }).select('info updated_by');
 
                         if (notices.length === 0) {
                             console.log('No notice available');  // If no notices found
@@ -143,14 +170,15 @@ client.on('message_create', async message => {
                         if (notice_info.length == 0) {
                             await message.reply("Please enter the notice info");
                         } else {
-                            const notice_data = {
-                                sem: sem,
-                                department: department,
-                                info: notice_info,
-                                updated_by: name
-                            };
                             try {
-                                await addNotice(notice_data);
+                                const newNotice = new Notice({
+                                    sem: sem,
+                                    department: department,
+                                    info: notice_info,
+                                    updated_by: name
+                                });
+                                await newNotice.save();
+
                                 await message.reply("Notice added successfully");
                             } catch (error) {
                                 await message.reply("Error adding notice");
@@ -217,14 +245,17 @@ client.on('message_create', async message => {
                 } else if (message_body.startsWith("$5")) {
                     // return list of all assignments
                     try {
-                        const assignments = await findAssignment(sem, department);
+                        const assignments = await Assignment.find({ semester: sem, department: department });
                         if (assignments.length == 0) {
                             await message.reply("No pending assignments found");
                         } else {
-                            await message.reply("Assignments found");
-                            let msg = "";
+                            let msg = "Assignments found\n";
+                            let counter = 1;
                             for (const assignment of assignments) {
-                                msg += assignment.subject_name + " " + assignment.given_by + "\n";
+                                const given_by = await Faculty.findOne({ number: assignment.given_by });
+                                msg += (counter.toString() + " " + assignment.subject_name + " " + given_by + "\n");
+                                counter += 1;
+                                console.log(counter);
                             }
                             await message.reply(msg);
                         }
@@ -243,7 +274,8 @@ client.on('message_create', async message => {
                     // with media students only provide $subjectname
                     const subject_name = message_body.slice(1).trim();
                     // search for assignment in the database
-                    const assignments = await findAssignment(sem, department);
+                    const assignments = await Assignment.find({ semester: sem, department: department });
+
                     if (assignments.length == 0) {
                         await message.reply("You dont have any pending assignment");
                     } else {
@@ -372,58 +404,53 @@ client.on('message_create', async message => {
                             console.log("New folder created : " + folder_path);
                             fs.mkdirSync(folder_path, { recursive: true });
                         }
+
+                        // add assignment
                         const assignmentData = {
                             semester: sem,
-                            given_by: faculty_data.name,
                             department: faculty_data.department,
+                            faculty_number: phone_number,
                             subject_name: subject,
                             folder_path: folder_path,
-                            faculty_number: phone_number,
-                        };
+                        }
                         if (optionalMsgParts.length > 0) {
                             // default deadline is 7 days from today
                             const days = optionalMsgParts[0].trim();
                             assignmentData.deadline = moment().add(days, 'days').endOf('day');
+                            if (optionalMsgParts.length > 1) {
+                                assignmentData.optional_msg = optionalMsgParts[1].trim();
+                            }
                         }
-                        if (optionalMsgParts.length > 1) {
-                            assignmentData.optional_msg = optionalMsgParts[1].trim();
-                        }
-                        await addAssignment(assignmentData);
+                        const newAssignment = new Assignment(assignmentData);
+                        await newAssignment.save();
+                        console.log("Assignment added successfully");
 
                         await message.reply("Assignment created successfully");
                         const AssignmentDataFromDB = await Assignment.findOne({ faculty_number: phone_number, subject_name: subject, semester: sem });
+
                         // notify all students in the department in the sem about this assignment
-                        try {
-                            const students = await Student.find({ department: faculty_data.department, sem: sem });
-                            if (students.length == 0) {
-                                await message.reply("No students found in this department and semester");
-                                return;
-                            }
-                            for (const student of students) {
-                                const phoneNumber = "91" + student.number; // Replace with the recipient's phone number
-
-                                // debug line
-                                // console.log("XXXXXXXX::::::::" + typeof assignmentData.deadline);
-
-                                const message = `${noticeEmoji} New Assignment from ${faculty_data.name} : ${subject}\nDeadline : ${AssignmentDataFromDB.deadline.toDateString().slice(0, -5)}`;
-                                try {
-                                    await client.sendMessage(`${phoneNumber}@c.us`, message);
-                                    console.log('Message sent successfully!');
-                                } catch (err) {
-                                    console.error('Error sending message:', err);
-                                }
-                            }
-                        } catch (error) {
-                            await message.reply("Unable to send reminder to students " + redCross);
-                            console.log(error);
+                        const students = await Student.find({ department: faculty_data.department, sem: sem });
+                        if (students.length == 0) {
+                            await message.reply("No students found in this department and semester");
+                            return;
                         }
+                        for (const student of students) {
+                            const phoneNumber = "91" + student.number; // Replace with the recipient's phone number
 
+                            const message = `${noticeEmoji} New Assignment from ${faculty_data.name} : ${subject}\nDeadline : ${AssignmentDataFromDB.deadline.toDateString().slice(0, -5)}`;
+                            try {
+                                await client.sendMessage(`${phoneNumber}@c.us`, message);
+                                console.log('Message sent successfully!');
+                            } catch (err) {
+                                console.error('Error sending message:', err);
+                            }
+                        }
                     } catch (error) {
                         await message.reply("Error in $1 " + redCross);
                         console.log("Error in $1 ", error);
                     }
                 }
-                else if (message_body.startsWith("$2")) { // testing pending
+                else if (message_body.startsWith("$2")) { // working
                     try {
                         // Assignment status
                         // message_body in this format $2
@@ -435,10 +462,12 @@ client.on('message_create', async message => {
                             return;
                         }
                         let msg = "";
+                        let counter = 1;
                         for (const assignment of assignments) {
                             // calculate total number of students in the department and sem of that assignment
                             const total_students = await Student.countDocuments({ department: faculty_data.department, sem: assignment.semester });
-                            msg += assignment.subject_name + " sem : " + assignment.semester + " submissions : " + assignment.submissions + "/" + total_students + "\n";
+                            msg += counter.toString() + " " + assignment.subject_name + " sem : " + assignment.semester + " submissions : " + assignment.submissions + "/" + total_students + "\n";
+                            counter += 1;
                         }
                         await message.reply(msg);
                     } catch (error) {
@@ -561,7 +590,10 @@ client.on('message_create', async message => {
                     rightArrowEmoji + "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
                     "Departments : (CSE , IT, TT, APM)";
                 console.log("message from unknown person " + phone_number);
-
+                if (message_body == "$") {
+                    await message.reply("*Welcome to GCETTS* " + redHeart + REGISTRATION_MESSAGE);
+                    return;
+                }
                 try {
                     // Format: $_ROLE_NAME_DEPARTMENT_SEM_ROLLNUMBER (for students)
                     // Format: $_ROLE_NAME_DEPARTMENT (for faculty)
@@ -583,29 +615,21 @@ client.on('message_create', async message => {
                             await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
                             throw new Error("Invalid semester");
                         }
-
-                        // some bugs in this code below, will fix later
-                        // const rollnumber_int = Number(rollnumber);
-                        // if (!(Number.isInteger(rollnumber_int) && rollnumber_int > 0 && rollnumber_int === String(rollnumber_int))) {
-                        //     await message.reply("Invalid rollnumber " + redCross + "\nRollnumber must be a positive integer");
-                        //     throw new Error("Invalid rollnumber");
-                        // }
-
                         console.log({ role, name, department, sem, rollnumber });
 
                         if (studentConfig.add_person === false) {
-                            console.log("Here add person is false \n");
+                            // add person false for students
                             await message.reply("Registration feature is disabled");
                         } else {
-                            console.log("Here add person is true \n");
-                            addPerson(role, {
+                            // add person true for students
+                            const student = new Student({
                                 number: phone_number,
-                                name,
-                                sem,
-                                department,
-                                roll: rollnumber,
-                                iscr: false
+                                name: name,
+                                sem: sem,
+                                department: department,
+                                roll: rollnumber
                             });
+                            await student.save();
                             await message.reply(`Hi ${name} ${hiEmoji}\nthank you for registering\nSend $ for menu`);
                         }
                     } else if (role === "FACULTY") {
@@ -618,12 +642,13 @@ client.on('message_create', async message => {
                         if (facultyConfig.add_person === false) {
                             await message.reply("Registration feature is disabled");
                         } else {
-                            await addPerson(role, {
-                                name,
+                            const faculty = new Faculty({
                                 number: phone_number,
-                                department,
-                                ishod: false
-                            });
+                                department: department,
+                                name: name
+                            })
+                            await faculty.save();
+
                             await message.reply(`Hi Prof. ${name}\nthank you for registering\nSend $ for menu`);
                         }
                     } else {
@@ -632,7 +657,7 @@ client.on('message_create', async message => {
                     }
                 } catch (error) {
                     console.log("inside registration catch block \n", error);
-                    await message.reply("*Welcome to GCETTS*" + REGISTRATION_MESSAGE);
+                    await message.reply("*Welcome to GCETTS* " + redHeart + REGISTRATION_MESSAGE);
                 }
             }
         }

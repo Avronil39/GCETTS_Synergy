@@ -9,10 +9,6 @@ const assignmentSchema = new mongoose.Schema({
         max: 8,          // Maximum semester value
         required: true   // Required field
     },
-    given_by: {
-        type: String,    // Faculty name 
-        required: true   // Required field
-    },
     faculty_number: {
         type: String,    // Faculty number
         required: true   // Required field
