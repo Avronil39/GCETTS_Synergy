@@ -6,6 +6,7 @@ const moment = require('moment');
 const fs = require('fs');
 const archiver = require('archiver');
 const express = require('express')
+const ngrok = require('ngrok');
 
 
 // Import models
@@ -16,16 +17,17 @@ const Assignment = require('./models/assignment');
 const Notice = require('./models/notice');
 const BugReport = require('./models/bugreport');
 
+// express config
 const app = express()
 const port = 3000
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
+// connecting ngrok
+let url;
+(async function () {
+    url = await ngrok.connect(3000);
+})();
 
-app.get('/', (req, res) => {
-    res.send('Hello World!')
-})
-
-app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-})
 
 
 
@@ -64,7 +66,7 @@ const blueCircle = String.fromCodePoint(0x1F535);     // Blue circle emoji: 🔵
 const questionMark = String.fromCodePoint(0x2753);    // Question mark emoji: ❓
 const hiEmoji = String.fromCodePoint(0x1F44B);        // Waving hand emoji: 👋
 const redHeart = String.fromCodePoint(0x2764, 0xFE0F); // ❤️
-
+// const url = "http://192.168.29.96:3000" + "/web/";
 
 // Main message handler for all incoming WhatsApp messages
 client.on('message_create', async message => {
@@ -263,12 +265,11 @@ client.on('message_create', async message => {
                         console.error('Error fetching assignments:', error);
                         await message.reply("Error fetching assignments");
                     }
-                } else if (message.hasMedia) {
-                    // pending features
-                    // assignment overwrite // implemented not tested
-                    // increment submission count  // implemented not tested
-                    // check if deadline is crossed // implemented not tested
+                } else if (message_body.startsWith("$6")) {
+                    // Return website url
+                    await message.reply("Url : " + url);
 
+                } else if (message.hasMedia) {
                     console.log("Media found");
                     console.log("Message body : ", message_body, "\n\n");
                     // with media students only provide $subjectname
@@ -318,8 +319,6 @@ client.on('message_create', async message => {
                                             subject_name: subject_name,
                                             semester: sem
                                         });
-                                        if (!currDoc)
-                                            console.log("currDoc is NULL\n***********************************");
                                         await Assignment.updateOne({ subject_name: subject_name, semester: sem }, { submissions: currDoc.submissions + 1 });
                                         await message.reply("Assignment uploaded successfully");
                                     }
@@ -342,8 +341,8 @@ client.on('message_create', async message => {
                     msg += blueCircle + " $3 To see student configuration\n\n";
                     msg += blueCircle + " $4 To list total student data int your class\n\n";
                     msg += blueCircle + " $5 To list all assignments\n\n";
+                    msg += blueCircle + " $6 To get GCETTS website\n\n";
                     msg += blueCircle + " $Subject + media to submit assignment";
-
                     if (message_body !== "$") {
                         msg = redCross + "Unable to understand your query\n\n" + msg;
                     }
@@ -368,7 +367,8 @@ client.on('message_create', async message => {
                     "$3 to download assignments\n" +
                     "_Syntax : $3_subjectName_\n\n" +
                     "$4 to list all students in your department\n" +
-                    "_Syntax : $4_sem_";
+                    "_Syntax : $4_sem_\n\n" +
+                    "$5 to get website link";
                 if (message_body == "$") {
                     await message.reply(menu_msg);
                 }
@@ -566,6 +566,10 @@ client.on('message_create', async message => {
                     }
                     await message.reply(msg);
                 }
+                else if (message_body.startsWith("$5")) {
+                    // Return website url
+                    await message.reply("Url : " + url);
+                }
                 else {
                     await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
                 }
@@ -666,6 +670,16 @@ client.on('message_create', async message => {
         console.log("error ", error);
     }
 });
+
+// post request
+app.get('/web', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+})
+
+// listen
+app.listen(port, () => {
+    console.log(`Example app listening on port ${port}`)
+})
 
 // Initialize WhatsApp client and connect
 client.initialize();

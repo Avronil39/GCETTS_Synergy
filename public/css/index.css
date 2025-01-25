@@ -1,0 +1,12 @@
+.container {
+    min-width: 100vw;
+    min-height: 100vh;
+    box-sizing: border-box;
+    border: 2px solid wheat;
+}
+
+.center-container {
+    min-height: 80vh;
+    box-sizing: border-box;
+    border: 2px solid red;
+}
