@@ -404,7 +404,7 @@ client.on('message_create', async message => {
 
                                 // debug line
                                 // console.log("XXXXXXXX::::::::" + typeof assignmentData.deadline);
-                                     
+
                                 const message = `${noticeEmoji} New Assignment from ${faculty_data.name} : ${subject}\nDeadline : ${AssignmentDataFromDB.deadline.toDateString().slice(0, -5)}`;
                                 try {
                                     await client.sendMessage(`${phoneNumber}@c.us`, message);
@@ -556,9 +556,9 @@ client.on('message_create', async message => {
                 const REGISTRATION_MESSAGE = "\n\nYou are not registered in the database\n\n" +
                     "Register yourself in this format below\n\n" +
                     "For Faculty: $_role_name_department\n\n" +
-                    "example: $_FACULTY_Manjari Saha_CSE\n\n" +
+                    rightArrowEmoji + "example: $_FACULTY_Manjari Saha_CSE\n\n" +
                     "For Student: $_role_name_department_sem_rollnumber\n\n" +
-                    "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
+                    rightArrowEmoji + "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
                     "Departments : (CSE , IT, TT, APM)";
                 console.log("message from unknown person " + phone_number);
 
