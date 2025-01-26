@@ -36,10 +36,10 @@ const assignmentSchema = new mongoose.Schema({
         required: false  // Not required field
     },
     // every single assignment is intended for many students, so submission holds number of submissions
-    submissions: {
-        type: Number,
-        default: 0
-    },
+    // submissions: {
+    //     type: Number,
+    //     default: 0
+    // },
     deadline: {
         type: Date,
         default: moment().add(7, 'days').endOf('day'),  // Default to today's date
