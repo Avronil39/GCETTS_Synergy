@@ -22,17 +22,21 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="#">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#">Samples</a></li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="dropdownMenuLink" role="button"
-                            data-bs-toggle="dropdown" aria-expanded="false">Dropdown</a>
+                            data-bs-toggle="dropdown" aria-expanded="false">Subjects</a>
+                        <!-- Show all subjects here from subjects array -->
                         <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
                             <li><a class="dropdown-item" href="#">Option 1</a></li>
                             <li><a class="dropdown-item" href="#">Option 2</a></li>
                         </ul>
                     </li>
                 </ul>
+                <!-- Faculty Name on the right side -->
+                <span class="navbar-text ms-auto">
+                    Faculty: Dr. John Smith
+                    <!-- Add faculty_name from ejs -->
+                </span>
             </div>
         </div>
     </nav>
@@ -54,49 +58,50 @@
             <!-- Collapsible Sidebar Content -->
             <div class="collapse d-lg-block" id="sidebarMenu">
                 <h5>Details</h5>
-                <form id="detailsForm">
+                <div id="detailsWindow" class="container">
                     <!-- Name Field -->
                     <div class="mb-3">
                         <label for="name" class="form-label">Name</label>
-                        <input type="text" id="name" class="form-control" readonly>
+                        <div id="name" class="form-control bg-white" readonly>John Doe</div>
                     </div>
                     <!-- Department Field -->
                     <div class="mb-3">
                         <label for="department" class="form-label">Department</label>
-                        <input type="text" id="department" class="form-control" readonly>
+                        <div id="department" class="form-control bg-white" readonly>Computer Science</div>
                     </div>
                     <!-- Semester Field -->
                     <div class="mb-3">
                         <label for="semester" class="form-label">Semester</label>
-                        <input type="text" id="semester" class="form-control" readonly>
+                        <div id="semester" class="form-control bg-white" readonly>5th</div>
                     </div>
                     <!-- Roll Number Field -->
                     <div class="mb-3">
                         <label for="roll" class="form-label">Roll Number</label>
-                        <input type="text" id="roll" class="form-control" readonly>
+                        <div id="roll" class="form-control bg-white" readonly>123456</div>
                     </div>
                     <!-- Subject Field -->
                     <div class="mb-3">
                         <label for="subject" class="form-label">Subject</label>
-                        <input type="text" id="subject" class="form-control" readonly>
+                        <div id="subject" class="form-control bg-white" readonly>Mathematics</div>
                     </div>
                     <!-- Previous and Next PDF buttons -->
                     <button type="button" id="prevPdf" class="btn btn-secondary w-100 mb-2">Previous PDF</button>
                     <button type="button" id="nextPdf" class="btn btn-secondary w-100">Next PDF</button>
-                </form>
+                </div>
+
             </div>
         </div>
 
         <!-- PDF Viewer -->
         <div class="flex-grow-1 bg-white" id="pdf-container">
             <!-- Embed PDF dynamically -->
-            <embed id="pdfViewer" src="/pdfs/sample.pdf" type="application/pdf" width="100%" height="100%">
+            <embed id="pdfViewer" src="../uploads/sample.pdf" type="application/pdf" width="100%" height="100%">
         </div>
     </div>
 
     <!-- Footer -->
     <footer class="bg-dark text-light text-center py-2">
-        <p class="mb-0">Credits: Avronil Banerjee for this page</p>
+        <p class="mb-0 fs-6">Copyright © Avronil Banerjee. All rights reserved.</p>
     </footer>
 
     <!-- Bootstrap JS -->

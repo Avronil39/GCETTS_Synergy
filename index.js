@@ -23,6 +23,9 @@ const port = 3000
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+// dont need since only get requests are working
+// app.use(bodyParser.urlencoded({ extended: true }));
+
 // connecting ngrok
 let url;
 (async function () {
@@ -65,6 +68,7 @@ const questionMark = String.fromCodePoint(0x2753);     // Question mark emoji: �
 const hiEmoji = String.fromCodePoint(0x1F44B);         // Waving hand emoji: 👋
 const redHeart = String.fromCodePoint(0x2764, 0xFE0F); // Heart emoji: ❤️
 const clockEmoji = String.fromCodePoint(0x1F552);      // Clock emoji: 🕒
+const cautionEmoji = String.fromCodePoint(0x26A0); // Caution emoji: ⚠️
 
 // const url = "http://192.168.29.96:3000" + "/web/";
 
@@ -126,6 +130,7 @@ client.on('message_create', async message => {
                 // $4 - List class students
                 // $5 - List assignments
                 // $6 - Get Website URL
+                // $7 - Bug Report
                 // Media - Submit assignment
 
                 if (message_body.startsWith("$1")) {
@@ -271,6 +276,23 @@ client.on('message_create', async message => {
                     // Return website URL
                     await message.reply("Url : " + url);
 
+                } else if (message_body.startsWith("$7")) {
+                    try {
+                        const [_, bug_message] = message_body.split("_").map(part => part.trim());
+                        if (!bug_message) {
+                            await message.reply("Please add bug description " + questionMark);
+                        }
+                        const bugreport = new BugReport({
+                            number: phone_number,
+                            name: name,
+                            description: bug_message,
+                        })
+                        await bugreport.save();
+                    } catch (error) {
+                        message.reply("Write bug report in this format " + redCross + "\nExample : $7_System is slow");
+                        console.log(error);
+                    }
+
                 } else if (message.hasMedia) {
                     // Handle media submission for assignments
                     console.log("Media found");
@@ -359,8 +381,8 @@ client.on('message_create', async message => {
                     msg += blueCircle + " $4 To list total student data in your class\n\n";
                     msg += blueCircle + " $5 To list all assignments\n\n";
                     msg += blueCircle + " $6 To get GCETTS website\n\n";
+                    msg += cautionEmoji + "$7_Bug message To report a bug\n\n";
                     msg += blueCircle + " $Subject + media to submit assignment";
-
                     if (message_body !== "$") {
                         msg = redCross + "Unable to understand your query\n\n" + msg;
                     }
@@ -391,8 +413,7 @@ client.on('message_create', async message => {
 
                 if (message_body == "$") {
                     await message.reply(menu_msg);
-                }
-                else if (message_body.startsWith("$1")) { // Create assignment
+                } else if (message_body.startsWith("$1")) { // Create assignment
                     try {
                         let [command, sem, subject, ...optionalMsgParts] = message_body.split('_');
                         sem = parseInt(sem.trim());
@@ -469,8 +490,7 @@ client.on('message_create', async message => {
                         await message.reply("Error in $1 " + redCross);
                         console.log("Error in $1 ", error);
                     }
-                }
-                else if (message_body.startsWith("$2")) { // View assignment status
+                } else if (message_body.startsWith("$2")) { // View assignment status
                     try {
                         const assignments = await Assignment.find({ faculty_number: phone_number });
                         if (assignments.length == 0) {
@@ -494,8 +514,7 @@ client.on('message_create', async message => {
                         console.log("Error in $2 ", error);
                         await message.reply("Error in $2 " + redCross);
                     }
-                }
-                else if (message_body.startsWith("$3")) { // Download assignments
+                } else if (message_body.startsWith("$3")) { // Download assignments
                     try {
                         let [_, subject, sem] = message_body.split('_');
                         subject = subject.trim();
@@ -551,8 +570,7 @@ client.on('message_create', async message => {
                         console.log("Error in $3 ", error);
                         await message.reply("Error in $3 " + redCross);
                     }
-                }
-                else if (message_body.startsWith("$4")) { // List department students
+                } else if (message_body.startsWith("$4")) { // List department students
                     const [_, sem] = message_body.split('_');
                     if (!sem || isNaN(sem) || sem < 1 || sem > 8) {
                         await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
@@ -573,27 +591,22 @@ client.on('message_create', async message => {
                         }
                     }
                     await message.reply(msg);
-                }
-                else if (message_body.startsWith("$5")) { // Return website URL
+                } else if (message_body.startsWith("$5")) { // Return website URL
                     await message.reply("Url : " + url);
-                }
-                else {
+                } else {
                     await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
                 }
             }
-
             // Handle registration for new users
             else if (person == null) {
                 // Registration formats:
                 // Students: $_STUDENT_NAME_DEPARTMENT_SEM_ROLLNUMBER
                 // Faculty: $_FACULTY_NAME_DEPARTMENT
-
                 // Registrations are closed for both student and faculties
                 if (studentConfig.add_person == false && facultyConfig.add_person == false) {
                     await message.reply("Registration feature is disabled");
                     return;
                 }
-
                 const REGISTRATION_MESSAGE = "\n\nYou are not registered in the database\n\n" +
                     "Register yourself in this format below\n\n" +
                     "For Faculty: $_role_name_department\n\n" +
@@ -602,12 +615,10 @@ client.on('message_create', async message => {
                     rightArrowEmoji + "example: $_STUDENT_Avro Banerjee_CSE_7_11000121016\n\n" +
                     "Departments : (CSE , IT, TT, APM)";
                 console.log("message from unknown person " + phone_number);
-
                 if (message_body == "$") {
                     await message.reply("*Welcome to GCETTS* " + redHeart + REGISTRATION_MESSAGE);
                     return;
                 }
-
                 try {
                     // Format: $_ROLE_NAME_DEPARTMENT_SEM_ROLLNUMBER (for students)
                     // Format: $_ROLE_NAME_DEPARTMENT (for faculty)
@@ -681,31 +692,6 @@ client.on('message_create', async message => {
         console.log("error ", error);
     }
 });
-
-// post request
-app.get('/:phone_number', async (req, res) => {
-    const phone_number = req.params.phone_number;
-    console.log("Get request received from : " + phone_number);
-    let person_data = await Student.findOne({ number: phone_number });
-    let person;
-    if (person_data) {
-        person = { type: 'STUDENT', data: person_data };
-    }
-    else {
-        person_data = await Faculty.findOne({ number: phone_number });
-        if (person_data) {
-            person = { type: 'FACULTY', data: person_data };
-        }
-    }
-    if (!person) {
-        // 
-        res.send("Unknown person");
-    }
-    else {
-        res.send("Hi " + person.type);
-    }
-    // res.sendFile(__dirname + '/public/index.html');
-})
 
 // listen
 app.listen(port, () => {
