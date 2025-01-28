@@ -1,71 +1,75 @@
 // Import required modules
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const mongoose = require('mongoose');
-const moment = require('moment');
-const fs = require('fs');
-const archiver = require('archiver');
-const express = require('express');
-const session = require('express-session');
-const bodyParser = require('body-parser');
-const ngrok = require('ngrok');
-const path = require('path');
-// Import models
-const Student = require('./models/student');
-const Faculty = require('./models/faculty');
-const Config = require('./models/config');
-const Assignment = require('./models/assignment');
-const Notice = require('./models/notice');
-const Submission = require('./models/submission')
-const BugReport = require('./models/bugreport');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js'); // WhatsApp client and message media handling
+const qrcode = require('qrcode-terminal'); // For generating and displaying QR code in terminal
+const mongoose = require('mongoose'); // MongoDB ORM for database interaction
+const moment = require('moment'); // Date and time manipulation library
+const fs = require('fs'); // File system handling
+const archiver = require('archiver'); // Archive files (zip)
+const express = require('express'); // Web framework for handling HTTP requests
+const session = require('express-session'); // Session management for user sessions
+const bodyParser = require('body-parser'); // Middleware to parse incoming request bodies
+const ngrok = require('ngrok'); // For creating secure tunnels to localhost (useful for development)
+const path = require('path'); // For handling and transforming file paths
 
-// express config
-const app = express()
-const port = 3000
+// Importing models for MongoDB interaction
+const Student = require('./models/student'); // Student model
+const Faculty = require('./models/faculty'); // Faculty model
+const Config = require('./models/config'); // Configuration model
+const Assignment = require('./models/assignment'); // Assignment model
+const Notice = require('./models/notice'); // Notice model
+const Submission = require('./models/submission'); // Submission model
+const BugReport = require('./models/bugreport'); // Bug report model
 
-// middlewares
-// Serve static files from the 'public' directory
+// Express app configuration
+const app = express(); // Create an instance of Express
+const port = 3000; // Port number for the app to run
+
+// Middleware to serve static files from 'public' directory
 app.use(express.static('public'));
 
+// Middleware for session management
 app.use(session({
-    secret: "signature_key",
-    saveUninitialized: false,
-    resave: false,
+    secret: "signature_key", // Secret key for signing the session ID cookie
+    saveUninitialized: false, // Don't save uninitialized sessions
+    resave: false, // Don't resave session if unmodified
     cookie: {
-        maxAge: 1000 * 60 * 60 * 12, // 12hours
+        maxAge: 1000 * 60 * 60 * 12, // Set cookie expiration to 12 hours
     }
-}))
-app.use(bodyParser.urlencoded({ extended: true }));
+}));
 
-// connecting ngrok
+// Middleware to parse incoming JSON requests
+app.use(express.json()); // Used for parsing JSON request bodies
+
+// Connect to ngrok and get the public URL for local server
 let url;
 (async function () {
-    url = await ngrok.connect(3000);
-    console.log("NGROK : " + url);
+    url = await ngrok.connect(3000); // Create a secure tunnel to the local server
+    console.log("NGROK : " + url); // Log the public URL provided by ngrok
 })();
 
-// Connect to MongoDB
+// Connect to MongoDB using mongoose
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.error('Could not connect to MongoDB...', err));
+    .then(() => console.log('Connected to MongoDB')) // Log success message on successful connection
+    .catch(err => console.error('Could not connect to MongoDB...', err)); // Log error if connection fails
 
 // Initialize WhatsApp client with local authentication
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: 'Auth'
+        dataPath: 'Auth' // Path to store authentication data
     })
 });
 
-// 1. QR code event should come first
+// Event handler for QR code generation
 client.on('qr', qr => {
-    qrcode.generate(qr, { small: true }); // Generate and display QR code in terminal
+    qrcode.generate(qr, { small: true }); // Generate and display the QR code in the terminal for WhatsApp login
 });
 
-// 2. Ready event
+// Event handler for when the client is ready and connected to WhatsApp
 client.on('ready', () => {
-    // console.clear();
-    console.log('Client is ready!'); // Log that the client is ready
+    // console.clear(); // Uncomment to clear the console on startup
+    console.log('Client is ready!'); // Log when the client is successfully connected and ready to send/receive messages
 });
+
 
 // Define emoji constants for better readability and reuse
 const calendarEmoji = String.fromCodePoint(0x1F4C5);   // Calendar emoji: 📅
@@ -78,7 +82,7 @@ const questionMark = String.fromCodePoint(0x2753);     // Question mark emoji: �
 const hiEmoji = String.fromCodePoint(0x1F44B);         // Waving hand emoji: 👋
 const redHeart = String.fromCodePoint(0x2764, 0xFE0F); // Heart emoji: ❤️
 const clockEmoji = String.fromCodePoint(0x1F552);      // Clock emoji: 🕒
-const cautionEmoji = String.fromCodePoint(0x26A0); // Caution emoji: ⚠️
+const cautionEmoji = String.fromCodePoint(0x26A0);     // Caution emoji: ⚠️
 
 // Main message handler for all incoming WhatsApp messages
 client.on('message_create', async message => {
@@ -118,18 +122,17 @@ client.on('message_create', async message => {
             }
             // Convert message to uppercase for case-insensitive commands
             const message_body = message.body.toUpperCase();
-
             // Handle messages from registered students
             if (person && person.type === "STUDENT") {
-                // Extract student information
+                // Extract student information from the person object
                 const student_data = person.data;
                 const sem = student_data.sem;
                 const department = student_data.department;
                 const rollnumber = student_data.roll;
                 const name = student_data.name;
 
-                // Log message receipt
-                console.log("Message from : ", student_data.name);
+                // Log the message receipt
+                console.log("Message from: ", student_data.name);
 
                 // Command handlers:
                 // $1 - Get notices
@@ -223,6 +226,7 @@ client.on('message_create', async message => {
 
                         if (toggle_config === "TOGGLE") {
                             if (student_data.iscr) {
+                                // Toggle the configuration options
                                 current_config.add_person = !current_config.add_person;
                                 current_config.delete_person = !current_config.delete_person;
                                 current_config.add_notice = !current_config.add_notice;
@@ -300,7 +304,6 @@ client.on('message_create', async message => {
                         message.reply("Write bug report in this format " + redCross + "\nExample : $7_System is slow");
                         console.log(error);
                     }
-
                 } else if (message.hasMedia) {
                     // Handle media submission for assignments
                     console.log("Media found");
@@ -369,8 +372,6 @@ client.on('message_create', async message => {
                                 file_path: filePath
                             });
                             await submit.save();
-                            // const currDoc = await Assignment.findOne({ subject_name: subject_name, semester: sem });
-                            // await Assignment.updateOne({ subject_name: subject_name, semester: sem }, { submissions: currDoc.submissions + 1 });
                             await message.reply("Assignment uploaded successfully");
                         }
 
@@ -396,7 +397,6 @@ client.on('message_create', async message => {
                     }
                     await message.reply(msg);
                 }
-
             }
             // Handle messages from registered faculty
             else if (person && person.type === "FACULTY") {
@@ -405,9 +405,11 @@ client.on('message_create', async message => {
                 // $2 - View assignment status
                 // $3 - Download assignments
                 // $4 - List department students
-                // $5 - Get website url
+                // $5 - Get website URL
                 const faculty_data = person.data;
                 const faculty_msg = message_body;
+
+                // Menu message for faculty
                 const menu_msg = "*Please select* \n\n" +
                     "$1 to create assignment\n" +
                     "_Syntax : $1_sem_subject_days_optional message_\n\n" +
@@ -417,12 +419,17 @@ client.on('message_create', async message => {
                     "_Syntax : $3_subjectName_sem_\n\n" +
                     "$4 to list all students in your department\n" +
                     "_Syntax : $4_sem_\n\n" +
-                    "$5 to get website link";
+                    "$5 to get website link\n\n" +
+                    "$6_Bug message to report a bug ";
 
+                // If the message is "$", show the menu
                 if (message_body == "$") {
                     await message.reply(menu_msg);
-                } else if (message_body.startsWith("$1")) { // Create assignment
+                }
+                // Command to create assignment
+                else if (message_body.startsWith("$1")) {
                     try {
+                        // Parse the command and arguments
                         let [command, sem, subject, ...optionalMsgParts] = message_body.split('_');
                         sem = parseInt(sem.trim());
                         subject = subject.trim();
@@ -447,13 +454,14 @@ client.on('message_create', async message => {
 
                         console.log({ sem: sem, subject: subject });
 
+                        // Create folder for assignment if not exists
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
                         if (!fs.existsSync(folder_path)) {
                             console.log("New folder created : " + folder_path);
                             fs.mkdirSync(folder_path, { recursive: true });
                         }
 
-                        // Add assignment
+                        // Prepare assignment data
                         const assignmentData = {
                             semester: sem,
                             department: faculty_data.department,
@@ -461,6 +469,8 @@ client.on('message_create', async message => {
                             subject_name: subject,
                             folder_path: folder_path,
                         }
+
+                        // Handle optional message parts (e.g., deadline and optional message)
                         if (optionalMsgParts.length > 0) {
                             const days = optionalMsgParts[0].trim();
                             assignmentData.deadline = moment().add(days, 'days').endOf('day');
@@ -469,12 +479,14 @@ client.on('message_create', async message => {
                             }
                         }
 
+                        // Save the assignment
                         const newAssignment = new Assignment(assignmentData);
                         await newAssignment.save();
                         console.log("Assignment added successfully");
 
                         await message.reply("Assignment created successfully");
 
+                        // Fetch assignment data from DB
                         const AssignmentDataFromDB = await Assignment.findOne({ faculty_number: phone_number, subject_name: subject, semester: sem });
 
                         // Notify students in the department and semester
@@ -486,6 +498,7 @@ client.on('message_create', async message => {
                         for (const student of students) {
                             const phoneNumber = "91" + student.number; // Replace with the recipient's phone number
 
+                            // Prepare the message to send to students
                             const message = `${noticeEmoji} New Assignment from ${faculty_data.name} : ${subject}\nDeadline : ${AssignmentDataFromDB.deadline.toDateString().slice(0, -5)}`;
                             try {
                                 await client.sendMessage(`${phoneNumber}@c.us`, message);
@@ -498,7 +511,9 @@ client.on('message_create', async message => {
                         await message.reply("Error in $1 " + redCross);
                         console.log("Error in $1 ", error);
                     }
-                } else if (message_body.startsWith("$2")) { // View assignment status
+                }
+                // Command to view assignment status
+                else if (message_body.startsWith("$2")) {
                     try {
                         const assignments = await Assignment.find({ faculty_number: phone_number });
                         if (assignments.length == 0) {
@@ -522,7 +537,9 @@ client.on('message_create', async message => {
                         console.log("Error in $2 ", error);
                         await message.reply("Error in $2 " + redCross);
                     }
-                } else if (message_body.startsWith("$3")) { // Download assignments
+                }
+                // Command to download assignments
+                else if (message_body.startsWith("$3")) {
                     try {
                         let [_, subject, sem] = message_body.split('_');
                         subject = subject.trim();
@@ -543,6 +560,7 @@ client.on('message_create', async message => {
 
                         await message.reply("Assignments found, creating archives. Please wait... " + clockEmoji);
 
+                        // Create archive folder if not exists
                         const archive_path = `./Archives/${faculty_data.department}/${assignment.semester}`;
                         if (!fs.existsSync(archive_path)) {
                             fs.mkdirSync(archive_path, { recursive: true });
@@ -578,7 +596,9 @@ client.on('message_create', async message => {
                         console.log("Error in $3 ", error);
                         await message.reply("Error in $3 " + redCross);
                     }
-                } else if (message_body.startsWith("$4")) { // List department students
+                }
+                // Command to list department students
+                else if (message_body.startsWith("$4")) {
                     const [_, sem] = message_body.split('_');
                     if (!sem || isNaN(sem) || sem < 1 || sem > 8) {
                         await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
@@ -599,9 +619,31 @@ client.on('message_create', async message => {
                         }
                     }
                     await message.reply(msg);
-                } else if (message_body.startsWith("$5")) { // Return website URL
+                }
+                // Command to return website URL
+                else if (message_body.startsWith("$5")) {
                     await message.reply("Url : " + url);
-                } else {
+                }
+                // Command to store bug information
+                else if (message_body.startsWith("$6")) {
+                    try {
+                        const [_, bug_message] = message_body.split("_").map(part => part.trim());
+                        if (!bug_message) {
+                            await message.reply("Please add bug description " + questionMark);
+                        }
+                        const bugreport = new BugReport({
+                            number: phone_number,
+                            name: faculty_data.name,
+                            description: bug_message,
+                        })
+                        await bugreport.save();
+                    } catch (error) {
+                        message.reply("Write bug report in this format " + redCross + "\nExample : $7_System is slow");
+                        console.log(error);
+                    }
+                }
+                // Default response if the message is not recognized
+                else {
                     await message.reply("Unable to understand your query" + redCross + "\n\n" + menu_msg);
                 }
             }
@@ -701,43 +743,14 @@ client.on('message_create', async message => {
     }
 });
 
-app.get("/", (req, res) => {
-    // goto login page
-    if (!req.session.isLoggedin) {
-        return res.redirect("/login");
-    }
-    // rest of the code
-    return res.render("unauthorized.ejs");
-})
+// copy express code here
 
-app.get("/login", (req, res) => {
-    // already logged in
-    if (req.session.isLoggedin) {
-        return res.redirect("/");
-    }
-    // render login page
-    return res.sendFile("/test/login.html", { root: __dirname });
-})
-app.post("/get-otp", (req, res) => {
 
-    req.session.generatedOtp = "111111"; // calculate random number
 
-    const number = req.body.mobileNumber;
-    console.log(number);
-    res.redirect("/");
-})
-app.post("/verify-otp", (req, res) => {
-    const otp = req.body.otp;
-    console.log("typed otp " + otp);
-    if (req.session.generatedOtp && otp === req.session.generatedOtp) {
-        req.session.isLoggedin = true;
-    }
-    res.redirect("/");
-})
+
 // listen
 app.listen(port, () => {
     console.log(`Express app listening on port ${port}`)
 })
-
 // Initialize WhatsApp client and connect
 client.initialize();
