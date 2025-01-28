@@ -6,9 +6,11 @@ const moment = require('moment');
 const fs = require('fs');
 const archiver = require('archiver');
 const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
 const ngrok = require('ngrok');
 const path = require('path');
-// Import modelsF
+// Import models
 const Student = require('./models/student');
 const Faculty = require('./models/faculty');
 const Config = require('./models/config');
@@ -20,19 +22,28 @@ const BugReport = require('./models/bugreport');
 // express config
 const app = express()
 const port = 3000
-// Serve static files from the 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
 
-// dont need since only get requests are working
-// app.use(bodyParser.urlencoded({ extended: true }));
+// middlewares
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
+
+app.use(session({
+    secret: "signature_key",
+    saveUninitialized: false,
+    resave: false,
+    cookie: {
+        maxAge: 1000 * 60 * 60 * 12, // 12hours
+    }
+}))
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // connecting ngrok
 let url;
 (async function () {
     url = await ngrok.connect(3000);
+    console.log("NGROK : " + url);
 })();
 
-console.clear();
 // Connect to MongoDB
 mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, useUnifiedTopology: true })
     .then(() => console.log('Connected to MongoDB'))
@@ -52,8 +63,7 @@ client.on('qr', qr => {
 
 // 2. Ready event
 client.on('ready', () => {
-    // console.clear(); // Clear console when ready
-    console.clear();
+    // console.clear();
     console.log('Client is ready!'); // Log that the client is ready
 });
 
@@ -69,8 +79,6 @@ const hiEmoji = String.fromCodePoint(0x1F44B);         // Waving hand emoji: �
 const redHeart = String.fromCodePoint(0x2764, 0xFE0F); // Heart emoji: ❤️
 const clockEmoji = String.fromCodePoint(0x1F552);      // Clock emoji: 🕒
 const cautionEmoji = String.fromCodePoint(0x26A0); // Caution emoji: ⚠️
-
-// const url = "http://192.168.29.96:3000" + "/web/";
 
 // Main message handler for all incoming WhatsApp messages
 client.on('message_create', async message => {
@@ -693,6 +701,39 @@ client.on('message_create', async message => {
     }
 });
 
+app.get("/", (req, res) => {
+    // goto login page
+    if (!req.session.isLoggedin) {
+        return res.redirect("/login");
+    }
+    // rest of the code
+    return res.render("unauthorized.ejs");
+})
+
+app.get("/login", (req, res) => {
+    // already logged in
+    if (req.session.isLoggedin) {
+        return res.redirect("/");
+    }
+    // render login page
+    return res.sendFile("/test/login.html", { root: __dirname });
+})
+app.post("/get-otp", (req, res) => {
+
+    req.session.generatedOtp = "111111"; // calculate random number
+
+    const number = req.body.mobileNumber;
+    console.log(number);
+    res.redirect("/");
+})
+app.post("/verify-otp", (req, res) => {
+    const otp = req.body.otp;
+    console.log("typed otp " + otp);
+    if (req.session.generatedOtp && otp === req.session.generatedOtp) {
+        req.session.isLoggedin = true;
+    }
+    res.redirect("/");
+})
 // listen
 app.listen(port, () => {
     console.log(`Express app listening on port ${port}`)
