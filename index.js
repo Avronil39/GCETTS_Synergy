@@ -212,7 +212,8 @@ client.on('message_create', async message => {
                         const [_, toggle_config] = message_body.split('_').map(part => part.trim());
                         let current_config = await Config.findOne({ about: "STUDENT" });
 
-                        const current_config_str = `1 Add person ${current_config.add_person ? greenTick : redCross}` +
+                        const current_config_str =
+                            `1 Add person ${current_config.add_person ? greenTick : redCross}` +
                             `\n2 Delete person ${current_config.delete_person ? greenTick : redCross}` +
                             `\n3 Add notice ${current_config.add_notice ? greenTick : redCross}` +
                             `\n4 Delete notice ${current_config.delete_notice ? greenTick : redCross}`;
@@ -259,11 +260,16 @@ client.on('message_create', async message => {
                         console.error('Error fetching student data:', error);
                         await message.reply("Error fetching student data");
                     }
-
                 } else if (message_body.startsWith("$5")) {
                     // Return list of all assignments
                     try {
-                        const assignments = await Assignment.find({ semester: sem, department: department });
+                        // Changes done below : List only assignments whose deadline has not passed
+                        const assignments = await Assignment.find({
+                            semester: sem,
+                            department: department,
+                            deadline: { $gte: moment() },
+                        });
+
                         if (assignments.length === 0) {
                             await message.reply("No pending assignments found");
                         } else {
@@ -271,8 +277,8 @@ client.on('message_create', async message => {
                             for (const [index, assignment] of assignments.entries()) {
                                 const isSubmitted = await Submission.findOne({
                                     faculty_number: assignment.faculty_number,
+                                    student_roll: rollnumber,
                                     subject_name: assignment.subject_name,
-                                    student_roll: rollnumber
                                 });
                                 const given_by = await Faculty.findOne({ number: assignment.given_by });
                                 msg += `${index + 1}. ${assignment.subject_name} ${given_by ? given_by.name : ""} ${isSubmitted ? greenTick : redCross}\n`;
@@ -300,6 +306,7 @@ client.on('message_create', async message => {
                             description: bug_message,
                         })
                         await bugreport.save();
+                        await message.reply("Bugreport saved successfully, thanks for reporting " + greenTick);
                     } catch (error) {
                         message.reply("Write bug report in this format " + redCross + "\nExample : $7_System is slow");
                         console.log(error);
@@ -329,7 +336,7 @@ client.on('message_create', async message => {
                         });
 
                         if (!assignment) {
-                            await message.reply("No assignments with such name " + redCross);
+                            await message.reply("No pending assignments with such name " + redCross);
                             return;
                         }
 
@@ -445,21 +452,8 @@ client.on('message_create', async message => {
                             return;
                         }
 
-                        // Check if assignment already exists
-                        const checkAssignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number, semester: sem });
-                        if (checkAssignment) {
-                            await message.reply("Assignment already exists and will be deleted after deadline " + redCross + `\nDeadline : ${checkAssignment.deadline.toDateString()}`);
-                            return;
-                        }
-
-                        console.log({ sem: sem, subject: subject });
-
-                        // Create folder for assignment if not exists
+                        // create folderpath
                         const folder_path = `./uploads/${faculty_data.department}/${sem}/${subject}`;
-                        if (!fs.existsSync(folder_path)) {
-                            console.log("New folder created : " + folder_path);
-                            fs.mkdirSync(folder_path, { recursive: true });
-                        }
 
                         // Prepare assignment data
                         const assignmentData = {
@@ -472,11 +466,34 @@ client.on('message_create', async message => {
 
                         // Handle optional message parts (e.g., deadline and optional message)
                         if (optionalMsgParts.length > 0) {
-                            const days = optionalMsgParts[0].trim();
+                            const days = parseInt(optionalMsgParts[0].trim());
+                            if (days < 0) {
+                                message.reply("Invalid deadline " + redCross);
+                                return;
+                            }
                             assignmentData.deadline = moment().add(days, 'days').endOf('day');
                             if (optionalMsgParts.length > 1) {
                                 assignmentData.optional_msg = optionalMsgParts[1].trim();
                             }
+                        }
+
+                        // changes done below
+                        // Check if assignment already exists by me or anyone else
+                        const checkAssignment = await Assignment.findOne({ subject_name: subject, department: faculty_data.department, semester: sem });
+                        if (checkAssignment) {
+                            await message.reply("Assignment already exists and will be deleted after deadline " +
+                                redCross +
+                                `\nDeadline : ${checkAssignment.deadline.toDateString()}` +
+                                "\nHint : Use slightly different subject name");
+                            return;
+                        }
+
+                        // console.log("New assignment \n" + { sem: sem, subject: subject });
+
+                        // Create folder for assignment if not exists
+                        if (!fs.existsSync(folder_path)) {
+                            // console.log("New folder created : " + folder_path);
+                            fs.mkdirSync(folder_path, { recursive: true });
                         }
 
                         // Save the assignment
@@ -487,6 +504,7 @@ client.on('message_create', async message => {
                         await message.reply("Assignment created successfully");
 
                         // Fetch assignment data from DB
+                        // This code below can be further optimized, again fetched from assignments because if deadline is not provided then database automatically assigns 7 days
                         const AssignmentDataFromDB = await Assignment.findOne({ faculty_number: phone_number, subject_name: subject, semester: sem });
 
                         // Notify students in the department and semester
@@ -521,16 +539,18 @@ client.on('message_create', async message => {
                             return;
                         }
                         let msg = "";
-                        let counter = 1;
-                        for (const assignment of assignments) {
+
+                        // changes done below related to counter
+                        // let counter = 1;
+                        for (const [counter, assignment] of assignments.entries()) {
                             const total_students = await Student.countDocuments({ department: faculty_data.department, sem: assignment.semester });
                             const total_submissions = await Submission.countDocuments({
                                 faculty_number: assignment.faculty_number,
-                                semester: assignment.semester,
+                                semester: assignment.semester, // no need to mention department because faculty_number is alraedy provided
                                 subject_name: assignment.subject_name
                             });
-                            msg += counter.toString() + " " + assignment.subject_name + " sem : " + assignment.semester + " submissions : " + total_submissions + "/" + total_students + "\n";
-                            counter += 1;
+                            msg += `${counter + 1} ${assignment.subject_name} sem ${assignment.semester} submissions : ${total_submissions}/${total_students}\n`;
+                            // counter += 1;
                         }
                         await message.reply(msg);
                     } catch (error) {
@@ -549,19 +569,31 @@ client.on('message_create', async message => {
                             return;
                         }
                         const assignment = await Assignment.findOne({ subject_name: subject, faculty_number: phone_number, semester: sem });
+                        if (assignment)
+                            console.log("assignment found\n", assignment);
+                        else
+                            console.log("assignment not fonund\n");
                         if (!assignment) {
                             await message.reply("No assignments found\nProvide subject name in this format $3_subjectName");
                             return;
                         }
-                        if (assignment.submissions == 0) {
+                        console.log(`finding submissions in ${assignment.department} ${assignment.semester} ${assignment.subject_name}`);
+                        const submissions = await Submission.countDocuments({ department: assignment.department, semester: assignment.semester, subject_name: assignment.subject_name });
+                        if (submissions)
+                            console.log("submissions found\n", submissions);
+                        else
+                            console.log("submissions not fonund\n");
+
+                        if (submissions == 0) {
                             await message.reply("0 submissions for this assignment");
                             return;
                         }
 
-                        await message.reply("Assignments found, creating archives. Please wait... " + clockEmoji);
+                        await message.reply(submissions + " submissions found, creating archives. Please wait... " + clockEmoji);
 
                         // Create archive folder if not exists
                         const archive_path = `./Archives/${faculty_data.department}/${assignment.semester}`;
+
                         if (!fs.existsSync(archive_path)) {
                             fs.mkdirSync(archive_path, { recursive: true });
                         }
@@ -578,7 +610,9 @@ client.on('message_create', async message => {
 
                         archive.pipe(output);
 
-                        const pdf_path = `./uploads/${faculty_data.department}/${assignment.semester}/${subject}`;
+                        // changes done below
+                        // const pdf_path = `./uploads/${faculty_data.department}/${assignment.semester}/${subject}`;
+                        const pdf_path = assignment.folder_path;
                         archive.directory(pdf_path, false);
                         await archive.finalize();
 
@@ -637,6 +671,8 @@ client.on('message_create', async message => {
                             description: bug_message,
                         })
                         await bugreport.save();
+                        await message.reply("Bugreport saved successfully, thanks for reporting " + greenTick);
+
                     } catch (error) {
                         message.reply("Write bug report in this format " + redCross + "\nExample : $7_System is slow");
                         console.log(error);
@@ -690,6 +726,12 @@ client.on('message_create', async message => {
                         if (isNaN(sem) || sem < 1 || sem > 8) {
                             await message.reply("Invalid semester " + redCross + "\nSemester values range from 1 to 8");
                             throw new Error("Invalid semester");
+                        }
+                        // changes made below
+                        const checkRollExists = await Student.findOne({ roll: rollnumber });
+                        if (checkRollExists) {
+                            message.reply("Rollnumber already exists, Contact system admin ");
+                            return;
                         }
                         console.log({ role, name, department, sem, rollnumber });
 
