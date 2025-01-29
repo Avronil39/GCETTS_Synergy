@@ -8,6 +8,9 @@
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Axios CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
 </head>
 
 <body class="bg-light">
@@ -24,30 +27,28 @@
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="dropdownMenuLink" role="button"
                             data-bs-toggle="dropdown" aria-expanded="false">Subjects</a>
-                        <!-- Show all subjects here from subjects array -->
                         <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
                             <li><a class="dropdown-item" href="#">Option 1</a></li>
                             <li><a class="dropdown-item" href="#">Option 2</a></li>
                         </ul>
                     </li>
                 </ul>
-                <!-- Faculty Name on the right side -->
-                <!-- <span class="navbar-text ms-auto">
-                    Faculty: Dr. John Smith
-                    Add faculty_name from ejs
-                </span> -->
+                <!-- Logout Button -->
+                <button id="logoutBtn" class="btn ms-auto d-flex align-items-center" style="width: 40px; height: 40px;">
+                    <img src="images/logout.svg" alt="Logout" width="24" height="24">
+                </button>
             </div>
         </div>
     </nav>
+
 
     <!-- Main Content -->
     <div class="container-fluid d-flex p-0" style="min-height: 93vh;">
         <!-- Sidebar -->
         <div class="d-flex flex-column bg-dark text-light p-3" id="sidebar">
-            <!-- Toggle Button for Mobile with SVG Icon -->
+            <!-- Toggle Button for Mobile -->
             <button class="btn btn-dark mb-3 d-lg-none" type="button" data-bs-toggle="collapse"
                 data-bs-target="#sidebarMenu" aria-expanded="false" aria-controls="sidebarMenu">
-                <!-- SVG Icon for Toggle -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-list"
                     viewBox="0 0 16 16">
                     <path d="M2 2h12a1 1 0 0 1 1 1v1H1V3a1 1 0 0 1 1-1zM1 7h14v1H1V7zm0 4h14v1H1v-1zm0 4h14v1H1v-1z" />
@@ -56,46 +57,46 @@
 
             <!-- Collapsible Sidebar Content -->
             <div class="collapse d-lg-block" id="sidebarMenu">
-                <p id="faculty_name" style="font-size: 18px;">Faculty Name</p>
-                <p style="font-size: 18px;">Student Details</p>
+                <p id="faculty_name">Faculty Name</p>
+                <p>Student Details</p>
                 <div id="detailsWindow" class="container">
                     <!-- Name Field -->
                     <div class="mb-3">
-                        <label for="name" class="form-label">Name</label>
-                        <div id="name" class="form-control bg-white" readonly>John Doe</div>
+                        <label for="student_name" class="form-label">Name</label>
+                        <input type="text" id="student_name" class="form-control bg-white" readonly />
                     </div>
                     <!-- Department Field -->
                     <div class="mb-3">
-                        <label for="department" class="form-label">Department</label>
-                        <div id="department" class="form-control bg-white" readonly>Computer Science</div>
+                        <label for="student_department" class="form-label">Department</label>
+                        <input type="text" id="student_department" class="form-control bg-white" readonly />
                     </div>
                     <!-- Semester Field -->
                     <div class="mb-3">
-                        <label for="semester" class="form-label">Semester</label>
-                        <div id="semester" class="form-control bg-white" readonly>5th</div>
+                        <label for="student_semester" class="form-label">Semester</label>
+                        <input type="text" id="student_semester" class="form-control bg-white" readonly />
                     </div>
                     <!-- Roll Number Field -->
                     <div class="mb-3">
-                        <label for="roll" class="form-label">Roll Number</label>
-                        <div id="roll" class="form-control bg-white" readonly>123456</div>
+                        <label for="student_roll" class="form-label">Roll Number</label>
+                        <input type="text" id="student_roll" class="form-control bg-white" readonly />
                     </div>
                     <!-- Subject Field -->
                     <div class="mb-3">
-                        <label for="subject" class="form-label">Subject</label>
-                        <div id="subject" class="form-control bg-white" readonly>Mathematics</div>
+                        <label for="student_subject" class="form-label">Subject</label>
+                        <input type="text" id="student_subject" class="form-control bg-white" readonly />
                     </div>
                     <!-- Previous and Next PDF buttons -->
-                    <button type="button" id="prevPdf" class="btn btn-secondary w-100 mb-2">Previous PDF</button>
-                    <button type="button" id="nextPdf" class="btn btn-secondary w-100">Next PDF</button>
+                    <button type="button" id="prev_pdf_btn" class="btn btn-secondary w-100 mb-2">Previous PDF</button>
+                    <button type="button" id="next_pdf_btn" class="btn btn-secondary w-100">Next PDF</button>
                 </div>
-
             </div>
+
         </div>
 
         <!-- PDF Viewer -->
         <div class="flex-grow-1 bg-white" id="pdf-container">
-            <!-- Embed PDF dynamically -->
-            <embed id="pdfViewer" src="../uploads/sample.pdf" type="application/pdf" width="100%" height="100%">
+            <embed id="pdf_viewer" src="../uploads/CSE/5/DSA/123123_AVRO STUDENT_5_CSE_DSA.pdf" type="application/pdf"
+                width="100%" height="100%">
         </div>
     </div>
 
@@ -106,17 +107,7 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Custom JS -->
-    <script src="./js/script.js"></script>
-
-    <!-- jQuery -->
-    <script src="
-    https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-
-    <!-- PDF Js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
-
+    <script src="js/faculty.js"></script>
 </body>
 
 </html>

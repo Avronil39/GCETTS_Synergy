@@ -29,9 +29,7 @@
                             <label for="mobileNumber" class="form-label">Mobile Number</label>
                             <input type="text" class="form-control" id="mobileNumber" placeholder="Enter mobile number"
                                 required>
-                            <small id="mobileError" class="form-text text-danger" style="display: none;"></small>
-                            <small id="otpSentMessage" class="form-text text-success" style="display: none;">OTP sent
-                                successfully. Please check your phone.</small>
+                            <small id="getOtpBtnResponse" class="form-text" style="display: none;"></small>
                         </div>
                         <button type="button" class="btn btn-primary w-100" id="getOtpBtn">Get OTP</button>
 
@@ -40,10 +38,9 @@
                             <label for="otp" class="form-label">OTP</label>
                             <input type="text" class="form-control" id="otp" placeholder="Enter OTP" maxlength="6"
                                 required disabled>
-                            <small id="otpError" class="form-text text-danger" style="display: none;"></small>
+                            <small id="submitOtpBtnResponse" class="form-text" style="display: none;"></small>
                         </div>
                         <button type="button" class="btn btn-success w-100" id="submitOtpBtn" disabled>Submit</button>
-                        <small id="otpVerificationMessage" class="form-text text-danger" style="display: none;"></small>
                     </div>
                 </div>
             </div>
@@ -55,73 +52,84 @@
         const otpInput = document.getElementById('otp');
         const getOtpButton = document.getElementById('getOtpBtn');
         const submitOtpButton = document.getElementById('submitOtpBtn');
-        const mobileError = document.getElementById('mobileError');
-        const otpError = document.getElementById('otpError');
-        const otpSentMessage = document.getElementById('otpSentMessage');
-        const otpVerificationMessage = document.getElementById('otpVerificationMessage');
+        const getOtpBtnResponse = document.getElementById('getOtpBtnResponse');
+        const submitOtpBtnResponse = document.getElementById('submitOtpBtnResponse');
 
-        // Function to validate mobile number
         function validateMobileNumber(mobile) {
             return mobile.length === 10 && !isNaN(mobile);
         }
 
-        // Function to validate OTP
         function validateOtp(otp) {
             return otp.length === 6 && !isNaN(otp);
         }
 
         // Send OTP
         getOtpButton.addEventListener('click', async () => {
-            const mobilenumber = mobileInput.value.trim();
-            if (validateMobileNumber(mobilenumber)) {
-                mobileError.style.display = 'none';
-                try {
-                    getOtpButton.disabled = true;
-                    const response = await axios.post('/send-otp', { mobilenumber });
+            const mobile = mobileInput.value.trim();
+            if (!validateMobileNumber(mobile)) {
+                getOtpBtnResponse.textContent = "Please enter a valid 10-digit mobile number.";
+                getOtpBtnResponse.style.color = "red";
+                getOtpBtnResponse.style.display = 'block';
+                return;
+            }
+
+            try {
+                getOtpButton.disabled = true;
+                const response = await axios.post('/send-otp', { mobile });
+                if (response.data.message === "Successful") {
                     otpInput.disabled = false;
                     submitOtpButton.disabled = false;
-                    otpSentMessage.style.display = 'block';
-                    otpVerificationMessage.style.display = 'none';
-                } catch (error) {
-                    console.error("Error sending OTP:", error);
-                    otpSentMessage.style.display = 'none';
-                    otpVerificationMessage.textContent = "Error sending OTP. Please try again.";
-                    otpVerificationMessage.style.display = 'block';
-                } finally {
-                    getOtpButton.disabled = false;
+                    getOtpBtnResponse.textContent = "OTP Sent, enter within 30 seconds";
+                    getOtpBtnResponse.style.color = "green";
+                    getOtpBtnResponse.style.display = 'block';
                 }
-            } else {
-                mobileError.style.display = 'block';
-                mobileError.textContent = "Please enter a valid 10-digit mobile number.";
+                else if (response.data.message === "Unregistered") {
+                    getOtpBtnResponse.textContent = "You are not registered in system";
+                    getOtpBtnResponse.style.color = "red";
+                    getOtpBtnResponse.style.display = 'block';
+                }
+                else {
+                    getOtpBtnResponse.textContent = "Serverside error occured";
+                    getOtpBtnResponse.style.color = "red";
+                    getOtpBtnResponse.style.display = 'block';
+                }
+            } catch (error) {
+                getOtpBtnResponse.textContent = "Error sending OTP. Please try again.";
+                getOtpBtnResponse.style.color = "red";
+                getOtpBtnResponse.style.display = 'block';
+            } finally {
+                getOtpButton.disabled = false;
             }
         });
 
         // Verify OTP
         submitOtpButton.addEventListener('click', async () => {
-            const mobilenumber = mobileInput.value.trim();
+            const mobile = mobileInput.value.trim();
             const otp = otpInput.value.trim();
-            if (validateMobileNumber(mobilenumber) && validateOtp(otp)) {
-                otpError.style.display = 'none';
-                otpVerificationMessage.style.display = 'none';
-                try {
-                    submitOtpButton.disabled = true;
-                    const response = await axios.post('/verify-otp', { mobilenumber, otp });
-                    if (response.data.message === "Successful") {
-                        window.location.href = '/';  // Redirect to home page
-                    } else {
-                        otpVerificationMessage.textContent = "Wrong OTP or mobile number. Please try again.";
-                        otpVerificationMessage.style.display = 'block';
-                    }
-                } catch (error) {
-                    console.error("Error verifying OTP:", error);
-                    otpVerificationMessage.textContent = "Error verifying OTP. Please try again.";
-                    otpVerificationMessage.style.display = 'block';
-                } finally {
-                    submitOtpButton.disabled = false;
+            if (!validateMobileNumber(mobile) || !validateOtp(otp)) {
+                submitOtpBtnResponse.textContent = "Please enter a valid mobile number and 6-digit OTP.";
+                submitOtpBtnResponse.style.color = "red";
+                submitOtpBtnResponse.style.display = 'block';
+                return;
+            }
+
+            try {
+                submitOtpButton.disabled = true;
+                const response = await axios.post('/verify-otp', { mobile, otp });
+
+                submitOtpBtnResponse.textContent = response.data.message;
+                submitOtpBtnResponse.style.color = response.data.message === "Successful" ? "green" : "red";
+                submitOtpBtnResponse.style.display = 'block';
+
+                if (response.data.message === "Successful") {
+                    setTimeout(() => window.location.href = '/', 1000);
                 }
-            } else {
-                otpError.style.display = 'block';
-                otpError.textContent = "Please enter a valid 6-digit OTP.";
+            } catch (error) {
+                submitOtpBtnResponse.textContent = "Error verifying OTP. Please try again.";
+                submitOtpBtnResponse.style.color = "red";
+                submitOtpBtnResponse.style.display = 'block';
+            } finally {
+                submitOtpButton.disabled = false;
             }
         });
     </script>
@@ -130,3 +138,4 @@
 </body>
 
 </html>
+rectify login.html because you have changed res.send to res.json
