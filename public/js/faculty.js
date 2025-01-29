@@ -10,12 +10,6 @@ const next_pdf_btn = document.getElementById("next_pdf_btn");
 const pdf_viewer = document.getElementById("pdf_viewer");
 
 
-
-
-
-
-
-
 logoutButton.addEventListener("click", async () => {
     // alert("Logging out"); // for debugging
     try {

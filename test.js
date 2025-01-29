@@ -32,6 +32,7 @@ mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, us
 
 // Middleware to serve static files from 'public' directory
 app.use(express.static('public'));
+app.use(express.static('uploads'));
 // Middleware for session management
 app.use(session({
     secret: "signature_key", // Secret key for signing the session ID cookie
@@ -58,43 +59,51 @@ app.listen(port, () => {
 // person
 
 app.get("/", (req, res) => {
-    // if not logged in 
-    if (!req.session.isLoggedin) {
-        return res.redirect("/login");
-    }
-    else {
-        if (req.session.person.type === "STUDENT") {
-            // this line is working but in vs code when i am typing /, its not showing options here, anything wrong in code?
-            return res.sendFile("public/student.html", { root: __dirname });
-        }
-        else if (req.session.person.type === "FACULTY") {
-            res.redirect("/assignments");
+    try {
+        // if not logged in 
+        if (!req.session.isLoggedin) {
+            return res.redirect("/login");
         }
         else {
-            return res.send("ERROR! Unknown person type");
+            if (req.session.person.type === "STUDENT") {
+                return res.render("student.ejs", { studentName: req.session.person.data.name });
+            }
+            else if (req.session.person.type === "FACULTY") {
+                res.redirect("/assignments");
+            }
+            else {
+                return res.json({ message: "ERROR! Unknown person type" });
+            }
         }
+    } catch (error) {
+        console.log(error);
+        return res.json({ message: "Error in /,check server logs" });
     }
 })
 app.get("/assignments/:subject?", async (req, res) => {
-    // work pending
-    if (!req.session.isLoggedin || req.session.person.type !== "FACULTY") {
-        res.redirect("/");
-    }
-    const mobile_number = req.session.mobile_number;
-    const person = req.session.person;
+    try {
+        if (!req.session.isLoggedin || req.session.person.type !== "FACULTY") {
+            return res.redirect("/");
+        }
+        const mobile_number = req.session.mobile_number;
+        const person = req.session.person;
 
-    const assignments = await Assignment.find({ faculty_number: mobile_number });
-    const subject = req.params.subject;
+        const assignments = await Assignment.find({ faculty_number: mobile_number });
+        const subject = req.params.subject;
 
-    if (!subject) {
-        const data = {
-            faculty_name: person.data.name,
-            subjects: assignments.map(assignment => assignment.subject_name),
-        };
-        return res.render("faculty.ejs", data);
-    }
-    else {
-        res.send("Under development");
+        if (!subject) {
+            const data = {
+                faculty_name: person.data.name,
+                subjects: assignments.map(assignment => assignment.subject_name),
+            };
+            return res.render("faculty.ejs", data);
+        }
+        else {
+            res.json({ message: "Under development" });
+        }
+    } catch (error) {
+        console.log(error);
+        res.json({ message: Error });
     }
 })
 
@@ -109,7 +118,7 @@ app.get("/login", (req, res) => {
 app.post("/send-otp", async (req, res) => {
     const { mobile } = req.body;
     try {
-        if (mobile.length != 10) {
+        if (mobile.length != 10) { // will add more checks later
             return res.json({ message: "Request from unknown source" });
         }
         // Check if person exists in database
@@ -153,7 +162,7 @@ app.post("/verify-otp", (req, res) => {
     if (
         req.session.mobile_number === mobile &&
         req.session.generatedOtp === otp &&
-        currentTime - req.session.otpTimestamp <= otpExpirationTime
+        currentTime - req.session.otpTimestamp < otpExpirationTime
     ) {
         req.session.isLoggedin = true;
         delete req.session.generatedOtp;
@@ -169,16 +178,17 @@ app.post('/logout', (req, res) => {
         req.session.destroy((err) => {
             if (err) {
                 // If an error occurs during session destruction, send an error response
-                return res.status(500).send('Failed to log out');
+                return res.status(500).json({ message: 'Failed to log out' });
             }
             // Clear the session cookie from browser
             res.clearCookie('connect.sid');
+            // res.clearCookie('connect.sid', { path: '/' }); // gpt suggested, need to learn, skipped for now
             // Send success response
-            res.send('Logged out successfully');
+            res.json({ message: 'Logged out successfully' });
         });
     } catch (error) {
         // Handle any unexpected errors
         console.error('Error logging out:', error);
-        res.status(500).send('Failed to log out');
+        res.status(500).json({ message: 'Failed to log out' });
     }
 });
