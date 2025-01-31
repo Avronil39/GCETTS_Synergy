@@ -32,8 +32,8 @@
                         <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
                             <% assignments.forEach(assignment=> {%>
                                 <li><a class="dropdown-item"
-                                        href="/assignments/<%=assignment.subject_name%>/<%= assignment.Semester %>">
-                                        <%=assignment.subject_name %>
+                                        href="/assignments/<%=assignment.subject_name%>/<%= assignment.semester %>">
+                                        Sub : <%=assignment.subject_name%> Sem : <%=assignment.semester%>
                                     </a></li>
                                 <%}); %>
                         </ul>

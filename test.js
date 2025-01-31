@@ -79,6 +79,7 @@ app.get("/", (req, res) => {
 })
 app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
     try {
+        console.log(`inside /assignments/${req.params.pdfSubject}/${req.params.pdfSemester}`);
         if ((!req.session.isLoggedin || req.session.person.type !== "FACULTY") ||
             (req.params.pdfSubject && !req.params.pdfSemester)) {
             // redirect 
@@ -91,7 +92,7 @@ app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
         const person = req.session.person;
 
         const pdfSubject = req.params.pdfSubject;
-        const pdfSemester = req.params.pdfSemester;
+        const pdfSemester = parseInt(req.params.pdfSemester);
 
         const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
 
@@ -122,12 +123,11 @@ app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
                 req.session.pdfSemester = pdfSemester;
             }
         }
-
         const data = {
             faculty_name: person.data.name,
             assignments: allAssignmentNames,
         };
-        return res.render("faculty.ejs", data);
+        return res.render("faculty.ejs", data); // this is the previous page, page 1
 
     } catch (error) {
         console.log(error);
@@ -237,23 +237,23 @@ const checkRole = (role) => {
 };
 
 // Student Button Next
-app.post("/button/next", checkRole("STUDENT"), (req, res) => {
-    // Handle student-specific logic here
-    res.send({ message: "Student next action processed" });
-});
+// app.post("/button/next", checkRole("STUDENT"), (req, res) => {
+//     // Handle student-specific logic here
+//     res.send({ message: "Student next action processed" });
+// });
 
 // Faculty Button Next
-app.post("/button/next", checkRole("FACULTY"), (req, res) => {
-    // Handle faculty-specific logic here
-    req.session.pdfIndex = req.session.pdfIndex + 1;
-    console.log(`Sending file ${req.session.pdfIndex} path ${req.session.pdfSubmissions[req.session.pdfIndex].file_path}`);
-    res.sendFile(req.session.pdfSubmissions[req.session.pdfIndex]);
+// app.post("/button/next", checkRole("FACULTY"), (req, res) => {
+//     // Handle faculty-specific logic here
+//     req.session.pdfIndex = req.session.pdfIndex + 1;
+//     console.log(`Sending file ${req.session.pdfIndex} path ${req.session.pdfSubmissions[req.session.pdfIndex].file_path}`);
+//     res.sendFile(req.session.pdfSubmissions[req.session.pdfIndex]);
 
-    // req.session.pdfSubmissions = await Submission.find({
-    //     subject_name: pdfSubject,
-    //     semester: pdfSemester,
-    //     faculty_number: mobile_number,
-    // }).sort({ _id: 1 }); // load from database;
-    // req.session.pdfSubject = pdfSubject;
-    // req.session.pdfSemester = pdfSemester;
-});
+//     // req.session.pdfSubmissions = await Submission.find({
+//     //     subject_name: pdfSubject,
+//     //     semester: pdfSemester,
+//     //     faculty_number: mobile_number,
+//     // }).sort({ _id: 1 }); // load from database;
+//     // req.session.pdfSubject = pdfSubject;
+//     // req.session.pdfSemester = pdfSemester;
+// });
