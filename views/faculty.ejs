@@ -30,9 +30,10 @@
                             data-bs-toggle="dropdown" aria-expanded="false">Subjects</a>
                         <!-- dynamically listing subjects -->
                         <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
-                            <% subjects.forEach(subject=> {%>
-                                <li><a class="dropdown-item" href="#">
-                                        <%=subject %>
+                            <% assignments.forEach(assignment=> {%>
+                                <li><a class="dropdown-item"
+                                        href="/assignments/<%=assignment.subject_name%>/<%= assignment.Semester %>">
+                                        <%=assignment.subject_name %>
                                     </a></li>
                                 <%}); %>
                         </ul>
@@ -102,8 +103,7 @@
 
         <!-- PDF Viewer -->
         <div class="flex-grow-1 bg-white" id="pdf-container">
-            <embed id="pdf_viewer" src="CSE/5/OOP/11000121067_KOUSHIKI BANERJEE_5_CSE_OOP.pdf" type="application/pdf"
-                width="100%" height="100%">
+            <embed id="pdf_viewer" src="facultyLandingPage.pdf" type="application/pdf" width="100%" height="100%">
         </div>
     </div>
 

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTP Verification</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+
+<body class="bg-light">
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">GCETTS Synergy</a>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h4 class="card-title text-center mb-4">OTP Verification</h4>
+
+                        <!-- Mobile Number Field -->
+                        <div class="mb-3">
+                            <label for="mobileNumber" class="form-label">Mobile Number</label>
+                            <input type="text" class="form-control" id="mobileNumber" placeholder="Enter mobile number"
+                                required>
+                            <small id="getOtpBtnResponse" class="form-text" style="display: none;"></small>
+                        </div>
+                        <button type="button" class="btn btn-primary w-100" id="getOtpBtn">Get OTP</button>
+
+                        <!-- OTP Field -->
+                        <div class="mb-3 mt-4">
+                            <label for="otp" class="form-label">OTP</label>
+                            <input type="text" class="form-control" id="otp" placeholder="Enter OTP" maxlength="6"
+                                required disabled>
+                            <small id="submitOtpBtnResponse" class="form-text" style="display: none;"></small>
+                        </div>
+                        <button type="button" class="btn btn-success w-100" id="submitOtpBtn" disabled>Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const mobileInput = document.getElementById('mobileNumber');
+        const otpInput = document.getElementById('otp');
+        const getOtpButton = document.getElementById('getOtpBtn');
+        const submitOtpButton = document.getElementById('submitOtpBtn');
+        const getOtpBtnResponse = document.getElementById('getOtpBtnResponse');
+        const submitOtpBtnResponse = document.getElementById('submitOtpBtnResponse');
+
+        function validateMobileNumber(mobile) {
+            return mobile.length === 10 && !isNaN(mobile);
+        }
+
+        function validateOtp(otp) {
+            return otp.length === 6 && !isNaN(otp);
+        }
+
+        // Send OTP
+        getOtpButton.addEventListener('click', async () => {
+            const mobile = mobileInput.value.trim();
+            if (!validateMobileNumber(mobile)) {
+                getOtpBtnResponse.textContent = "Please enter a valid 10-digit mobile number.";
+                getOtpBtnResponse.style.color = "red";
+                getOtpBtnResponse.style.display = 'block';
+                return;
+            }
+
+            try {
+                getOtpButton.disabled = true;
+                const response = await axios.post('/send-otp', { mobile });
+                if (response.data.message === "Successful") {
+                    otpInput.disabled = false;
+                    submitOtpButton.disabled = false;
+                    getOtpBtnResponse.textContent = "OTP Sent, enter within 30 seconds";
+                    getOtpBtnResponse.style.color = "green";
+                    getOtpBtnResponse.style.display = 'block';
+                }
+                else if (response.data.message === "Unregistered") {
+                    getOtpBtnResponse.textContent = "You are not registered in system";
+                    getOtpBtnResponse.style.color = "red";
+                    getOtpBtnResponse.style.display = 'block';
+                }
+                else {
+                    getOtpBtnResponse.textContent = "Serverside error occured";
+                    getOtpBtnResponse.style.color = "red";
+                    getOtpBtnResponse.style.display = 'block';
+                }
+            } catch (error) {
+                getOtpBtnResponse.textContent = "Error sending OTP. Please try again.";
+                getOtpBtnResponse.style.color = "red";
+                getOtpBtnResponse.style.display = 'block';
+            } finally {
+                getOtpButton.disabled = false;
+            }
+        });
+
+        // Verify OTP
+        submitOtpButton.addEventListener('click', async () => {
+            const mobile = mobileInput.value.trim();
+            const otp = otpInput.value.trim();
+            if (!validateMobileNumber(mobile) || !validateOtp(otp)) {
+                submitOtpBtnResponse.textContent = "Please enter a valid mobile number and 6-digit OTP.";
+                submitOtpBtnResponse.style.color = "red";
+                submitOtpBtnResponse.style.display = 'block';
+                return;
+            }
+
+            try {
+                submitOtpButton.disabled = true;
+                const response = await axios.post('/verify-otp', { mobile, otp });
+
+                submitOtpBtnResponse.textContent = response.data.message;
+                submitOtpBtnResponse.style.color = response.data.message === "Successful" ? "green" : "red";
+                submitOtpBtnResponse.style.display = 'block';
+
+                if (response.data.message === "Successful") {
+                    setTimeout(() => window.location.href = '/', 1000);
+                }
+            } catch (error) {
+                submitOtpBtnResponse.textContent = "Error verifying OTP. Please try again.";
+                submitOtpBtnResponse.style.color = "red";
+                submitOtpBtnResponse.style.display = 'block';
+            } finally {
+                submitOtpButton.disabled = false;
+            }
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

@@ -32,7 +32,7 @@ mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, us
 
 // Middleware to serve static files from 'public' directory
 app.use(express.static('public'));
-app.use(express.static('uploads'));
+// app.use(express.static('uploads'));
 // Middleware for session management
 app.use(session({
     secret: "signature_key", // Secret key for signing the session ID cookie
@@ -53,11 +53,8 @@ app.listen(port, () => {
 // below code will be pasted on actual file after separate testing
 // **********************************************************************************************
 
-// variables in session
-// isLoggedin
-// mobile_number
-// person
 
+// primary pages
 app.get("/", (req, res) => {
     try {
         // if not logged in 
@@ -80,41 +77,76 @@ app.get("/", (req, res) => {
         return res.json({ message: "Error in /,check server logs" });
     }
 })
-app.get("/assignments/:subject?", async (req, res) => {
+app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
     try {
-        if (!req.session.isLoggedin || req.session.person.type !== "FACULTY") {
+        if ((!req.session.isLoggedin || req.session.person.type !== "FACULTY") ||
+            (req.params.pdfSubject && !req.params.pdfSemester)) {
+            // redirect 
+            // if not logged in
+            // if not faculty
+            // if sem is not given with subject 
             return res.redirect("/");
         }
         const mobile_number = req.session.mobile_number;
         const person = req.session.person;
 
-        const assignments = await Assignment.find({ faculty_number: mobile_number });
-        const subject = req.params.subject;
+        const pdfSubject = req.params.pdfSubject;
+        const pdfSemester = req.params.pdfSemester;
 
-        if (!subject) {
-            const data = {
-                faculty_name: person.data.name,
-                subjects: assignments.map(assignment => assignment.subject_name),
-            };
-            return res.render("faculty.ejs", data);
+        const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
+
+        if (pdfSubject && pdfSemester) { // save Subject and Semester in session
+
+            const assignment = await Assignment.findOne({ faculty_number: mobile_number, subject_name: pdfSubject, semester: pdfSemester });
+            if (!assignment) { // no assignment with such name
+                return res.json({ message: `No assignment of subject ${pdfSubject} given by Prof. ${person.name} for ${pdfSemester} students\n Please choose from options` });
+            }
+            let updateSubmissions = true;  // Use 'let' to allow reassignment
+            if (req.session.pdfSubmissions &&
+                req.session.pdfIndex &&
+                req.session.pdfSubject &&
+                req.session.pdfSemester &&
+                req.session.pdfSubject === pdfSubject &&
+                req.session.pdfSemester !== pdfSemester) {
+                // no need to update, user refreshed
+                updateSubmissions = false;
+            }
+            if (updateSubmissions) {
+                req.session.pdfSubmissions = await Submission.find({
+                    subject_name: pdfSubject,
+                    semester: pdfSemester,
+                    faculty_number: mobile_number,
+                }).sort({ _id: 1 }); // load from database;
+                req.session.pdfIndex = 0; // begin from start
+                req.session.pdfSubject = pdfSubject;
+                req.session.pdfSemester = pdfSemester;
+            }
         }
-        else {
-            res.json({ message: "Under development" });
-        }
+
+        const data = {
+            faculty_name: person.data.name,
+            assignments: allAssignmentNames,
+        };
+        return res.render("faculty.ejs", data);
+
     } catch (error) {
         console.log(error);
-        res.json({ message: Error });
+        res.json({ message: error.message });  // Use error.message instead of 'Error'
     }
-})
+});
 
-
-// login logout related
+// session creation and termination
 app.get("/login", (req, res) => {
-    if (req.session.isLoggedin) {
-        return res.redirect("/");
+    try {
+        if (req.session.isLoggedin) {
+            return res.redirect("/"); // Redirect if already logged in
+        }
+        return res.render("login.ejs"); // Render login page
+    } catch (error) {
+        console.error(error); // Log the error to the console
+        return res.status(500).send("Internal Server Error"); // Send a user-friendly error message
     }
-    return res.sendFile("public/login.html", { root: __dirname }); // placed in /public
-})
+});
 app.post("/send-otp", async (req, res) => {
     const { mobile } = req.body;
     try {
@@ -191,4 +223,37 @@ app.post('/logout', (req, res) => {
         console.error('Error logging out:', error);
         res.status(500).json({ message: 'Failed to log out' });
     }
+});
+
+// buttons
+
+const checkRole = (role) => {
+    return (req, res, next) => {
+        if (!req.session.isLoggedin || req.session.person.type !== role) {
+            return res.status(403).send("Forbidden");
+        }
+        next();
+    };
+};
+
+// Student Button Next
+app.post("/button/next", checkRole("STUDENT"), (req, res) => {
+    // Handle student-specific logic here
+    res.send({ message: "Student next action processed" });
+});
+
+// Faculty Button Next
+app.post("/button/next", checkRole("FACULTY"), (req, res) => {
+    // Handle faculty-specific logic here
+    req.session.pdfIndex = req.session.pdfIndex + 1;
+    console.log(`Sending file ${req.session.pdfIndex} path ${req.session.pdfSubmissions[req.session.pdfIndex].file_path}`);
+    res.sendFile(req.session.pdfSubmissions[req.session.pdfIndex]);
+
+    // req.session.pdfSubmissions = await Submission.find({
+    //     subject_name: pdfSubject,
+    //     semester: pdfSemester,
+    //     faculty_number: mobile_number,
+    // }).sort({ _id: 1 }); // load from database;
+    // req.session.pdfSubject = pdfSubject;
+    // req.session.pdfSemester = pdfSemester;
 });
