@@ -10,6 +10,7 @@ const session = require('express-session'); // Session management for user sessi
 const bodyParser = require('body-parser'); // Middleware to parse incoming request bodies
 const ngrok = require('ngrok'); // For creating secure tunnels to localhost (useful for development)
 const path = require('path'); // For handling and transforming file paths
+const morgan = require('morgan');
 
 // Importing models for MongoDB interaction
 const Student = require('./models/student'); // Student model
@@ -29,6 +30,8 @@ mongoose.connect('mongodb://localhost:27017/gcetts', { useNewUrlParser: true, us
     .then(() => console.log('Connected to MongoDB')) // Log success message on successful connection
     .catch(err => console.error('Could not connect to MongoDB...', err)); // Log error if connection fails
 
+
+app.use(morgan('tiny')); // You can also use 'tiny' or 'dev' as format options
 
 // Middleware to serve static files from 'public' directory
 app.use(express.static('public'));
@@ -52,7 +55,14 @@ app.listen(port, () => {
 })
 // below code will be pasted on actual file after separate testing
 // **********************************************************************************************
-
+const checkRole = (role) => {
+    return (req, res, next) => {
+        if (!req.session.isLoggedin || req.session.person.type !== role) {
+            return res.status(403).send("Forbidden");
+        }
+        next();
+    };
+};
 
 // primary pages
 app.get("/", (req, res) => {
@@ -77,17 +87,24 @@ app.get("/", (req, res) => {
         return res.json({ message: "Error in /,check server logs" });
     }
 })
-app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
+app.get("/assignments", checkRole("FACULTY"), async (req, res) => {
+    try {
+        const mobile_number = req.session.mobile_number;
+        const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
+        const data = {
+            faculty_name: req.session.person.data.name,
+            assignments: allAssignmentNames,
+        };
+        return res.render("faculty.ejs", data); // this is the previous page, page 1
+    } catch (error) {
+        console.log(error);
+        return res.json({ message: error.message });  // Use error.message instead of 'Error'
+    }
+})
+app.get("/assignments/:pdfSubject/:pdfSemester", checkRole("FACULTY"), async (req, res) => {
     try {
         console.log(`inside /assignments/${req.params.pdfSubject}/${req.params.pdfSemester}`);
-        if ((!req.session.isLoggedin || req.session.person.type !== "FACULTY") ||
-            (req.params.pdfSubject && !req.params.pdfSemester)) {
-            // redirect 
-            // if not logged in
-            // if not faculty
-            // if sem is not given with subject 
-            return res.redirect("/");
-        }
+
         const mobile_number = req.session.mobile_number;
         const person = req.session.person;
 
@@ -97,19 +114,20 @@ app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
         const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
 
         if (pdfSubject && pdfSemester) { // save Subject and Semester in session
-
+            console.log(`\t${pdfSubject} & ${pdfSemester} provided so inside if block`);
             const assignment = await Assignment.findOne({ faculty_number: mobile_number, subject_name: pdfSubject, semester: pdfSemester });
             if (!assignment) { // no assignment with such name
+                console.log("\tNo assignment found, sending json");
                 return res.json({ message: `No assignment of subject ${pdfSubject} given by Prof. ${person.name} for ${pdfSemester} students\n Please choose from options` });
             }
             let updateSubmissions = true;  // Use 'let' to allow reassignment
+
             if (req.session.pdfSubmissions &&
                 req.session.pdfIndex &&
                 req.session.pdfSubject &&
                 req.session.pdfSemester &&
                 req.session.pdfSubject === pdfSubject &&
                 req.session.pdfSemester !== pdfSemester) {
-                // no need to update, user refreshed
                 updateSubmissions = false;
             }
             if (updateSubmissions) {
@@ -123,18 +141,19 @@ app.get("/assignments/:pdfSubject?/:pdfSemester?", async (req, res) => {
                 req.session.pdfSemester = pdfSemester;
             }
         }
+
         const data = {
             faculty_name: person.data.name,
             assignments: allAssignmentNames,
         };
+        console.log("\tRendering faculty.ejs");
         return res.render("faculty.ejs", data); // this is the previous page, page 1
 
     } catch (error) {
         console.log(error);
-        res.json({ message: error.message });  // Use error.message instead of 'Error'
+        return res.json({ message: error.message });  // Use error.message instead of 'Error'
     }
 });
-
 // session creation and termination
 app.get("/login", (req, res) => {
     try {
@@ -226,34 +245,33 @@ app.post('/logout', (req, res) => {
 });
 
 // buttons
-
-const checkRole = (role) => {
-    return (req, res, next) => {
-        if (!req.session.isLoggedin || req.session.person.type !== role) {
-            return res.status(403).send("Forbidden");
+app.post("/button/:direction", checkRole("FACULTY"), async (req, res) => {
+    if (req.params.direction === "next") {
+        if (req.session.pdfIndex < req.session.pdfSubmissions.length - 1) {
+            req.session.pdfIndex = req.session.pdfIndex + 1;
         }
-        next();
-    };
-};
+    }
+    else if (req.params.direction === "prev") {
+        if (req.session.pdfIndex > 0) {
+            req.session.pdfIndex = req.session.pdfIndex - 1;
+        }
+    }
+    else {
+        // no faeture till now
+        res.redirect("/");
+    }
+    const currStudent = req.session.pdfSubmissions[req.session.pdfIndex];
+    const student_name = await Student.findOne({ roll: currStudent.student_roll }).select("name");
+    res.json({
+        student_name: student_name,
+        student_department: currStudent.department,
+        student_semester: currStudent.semester,
+        student_roll: currStudent.student_roll,
+        student_subject: currStudent.subject_name,
+    });
+});
+app.get("/getPdf", checkRole("FACULTY"), (req, res) => {
+    const pdfPath = req.session.pdfSubmissions[req.session.pdfIndex].file_path;
+    res.sendFile(pdfPath, { root: __dirname });
+})
 
-// Student Button Next
-// app.post("/button/next", checkRole("STUDENT"), (req, res) => {
-//     // Handle student-specific logic here
-//     res.send({ message: "Student next action processed" });
-// });
-
-// Faculty Button Next
-// app.post("/button/next", checkRole("FACULTY"), (req, res) => {
-//     // Handle faculty-specific logic here
-//     req.session.pdfIndex = req.session.pdfIndex + 1;
-//     console.log(`Sending file ${req.session.pdfIndex} path ${req.session.pdfSubmissions[req.session.pdfIndex].file_path}`);
-//     res.sendFile(req.session.pdfSubmissions[req.session.pdfIndex]);
-
-//     // req.session.pdfSubmissions = await Submission.find({
-//     //     subject_name: pdfSubject,
-//     //     semester: pdfSemester,
-//     //     faculty_number: mobile_number,
-//     // }).sort({ _id: 1 }); // load from database;
-//     // req.session.pdfSubject = pdfSubject;
-//     // req.session.pdfSemester = pdfSemester;
-// });

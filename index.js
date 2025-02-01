@@ -10,6 +10,7 @@ const session = require('express-session'); // Session management for user sessi
 const bodyParser = require('body-parser'); // Middleware to parse incoming request bodies
 const ngrok = require('ngrok'); // For creating secure tunnels to localhost (useful for development)
 const path = require('path'); // For handling and transforming file paths
+const morgan = require('morgan');
 
 // Importing models for MongoDB interaction
 const Student = require('./models/student'); // Student model
@@ -27,7 +28,6 @@ const port = 3000; // Port number for the app to run
 // Middleware to serve static files from 'public' directory
 app.use(express.static('public'));
 
-// Middleware for session management
 app.use(session({
     secret: "signature_key", // Secret key for signing the session ID cookie
     saveUninitialized: false, // Don't save uninitialized sessions
@@ -36,9 +36,8 @@ app.use(session({
         maxAge: 1000 * 60 * 60 * 12, // Set cookie expiration to 12 hours
     }
 }));
-
-// Middleware to parse incoming JSON requests
 app.use(express.json()); // Used for parsing JSON request bodies
+app.use(morgan('tiny')); // You can also use 'tiny' or 'dev' as format options
 
 // Connect to ngrok and get the public URL for local server
 let url;
@@ -788,7 +787,186 @@ client.on('message_create', async message => {
 // copy express code here
 
 
+const checkRole = (role) => {
+    return (req, res, next) => {
+        if (!req.session.isLoggedin || req.session.person.type !== role) {
+            return res.status(403).send("Forbidden");
+        }
+        next();
+    };
+};
 
+// Primary Pages
+app.get("/", (req, res) => {
+    try {
+        if (!req.session.isLoggedin) {
+            return res.redirect("/login");
+        }
+        if (req.session.person.type === "STUDENT") {
+            return res.render("student.ejs", { studentName: req.session.person.data.name });
+        }
+        if (req.session.person.type === "FACULTY") {
+            return res.redirect("/assignments");
+        }
+        return res.json({ message: "ERROR! Unknown person type" });
+    } catch (error) {
+        console.error("Error in / route:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+});
+
+// Faculty Assignments Page
+app.get("/assignments", checkRole("FACULTY"), async (req, res) => {
+    try {
+        const mobile_number = req.session.mobile_number;
+        const assignments = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester");
+        return res.render("faculty.ejs", { faculty_name: req.session.person.data.name, assignments });
+    } catch (error) {
+        console.error("Error in /assignments route:", error);
+        return res.status(500).json({ message: error.message });
+    }
+});
+
+// Fetch Assignments by Subject and Semester
+app.get("/assignments/:pdfSubject/:pdfSemester", checkRole("FACULTY"), async (req, res) => {
+    try {
+        const { pdfSubject, pdfSemester } = req.params;
+        const mobile_number = req.session.mobile_number;
+        const faculty_name = req.session.person.data.name;
+
+        const assignments = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester");
+        const assignment = await Assignment.findOne({ faculty_number: mobile_number, subject_name: pdfSubject, semester: parseInt(pdfSemester) });
+
+        if (!assignment) {
+            return res.json({ message: `No assignment of subject ${pdfSubject} given by Prof. ${faculty_name} for semester ${pdfSemester}` });
+        }
+
+        req.session.pdfSubmissions = await Submission.find({
+            subject_name: pdfSubject,
+            semester: pdfSemester,
+            faculty_number: mobile_number,
+        }).sort({ _id: 1 });
+        req.session.pdfIndex = 0;
+        req.session.pdfSubject = pdfSubject;
+        req.session.pdfSemester = pdfSemester;
+
+        return res.render("faculty.ejs", { faculty_name, assignments });
+    } catch (error) {
+        console.error("Error in /assignments/:pdfSubject/:pdfSemester route:", error);
+        return res.status(500).json({ message: error.message });
+    }
+});
+
+// User Login
+app.get("/login", (req, res) => {
+    try {
+        if (req.session.isLoggedin) {
+            return res.redirect("/");
+        }
+        return res.render("login.ejs");
+    } catch (error) {
+        console.error("Error in /login route:", error);
+        return res.status(500).send("Internal Server Error");
+    }
+});
+
+// OTP Generation
+app.post("/send-otp", async (req, res) => {
+    try {
+        const { mobile } = req.body;
+        if (mobile.length !== 10) {
+            return res.json({ message: "Invalid mobile number" });
+        }
+
+        let person = await Student.findOne({ number: mobile }) || await Faculty.findOne({ number: mobile });
+        if (!person) {
+            return res.json({ message: "Unregistered" });
+        }
+
+        req.session.mobile_number = mobile;
+        req.session.person = person;
+        req.session.generatedOtp = "123456";
+        req.session.otpTimestamp = Date.now();
+
+        console.log(`OTP for ${mobile}: 123456`);
+        return res.json({ message: "Successful" });
+    } catch (error) {
+        console.error("Error in /send-otp route:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
+// OTP Verification
+app.post("/verify-otp", (req, res) => {
+    try {
+        const { mobile, otp } = req.body;
+        if (!req.session.generatedOtp || Date.now() - req.session.otpTimestamp > 30000) {
+            return res.status(400).json({ message: "OTP expired. Request a new one." });
+        }
+        if (req.session.mobile_number === mobile && req.session.generatedOtp === otp) {
+            req.session.isLoggedin = true;
+            delete req.session.generatedOtp;
+            delete req.session.otpTimestamp;
+            return res.json({ message: "Successful" });
+        }
+        return res.status(400).json({ message: "Invalid OTP" });
+    } catch (error) {
+        console.error("Error in /verify-otp route:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+});
+
+// Logout
+app.post("/logout", (req, res) => {
+    try {
+        req.session.destroy((err) => {
+            if (err) return res.status(500).json({ message: "Failed to log out" });
+            res.clearCookie("connect.sid");
+            return res.json({ message: "Logged out successfully" });
+        });
+    } catch (error) {
+        console.error("Error logging out:", error);
+        return res.status(500).json({ message: "Failed to log out" });
+    }
+});
+
+// Navigation Buttons (Next/Previous PDF Submission)
+app.post("/button/:direction", checkRole("FACULTY"), async (req, res) => {
+    try {
+        const { direction } = req.params;
+        if (direction === "next" && req.session.pdfIndex < req.session.pdfSubmissions.length - 1) {
+            req.session.pdfIndex++;
+        } else if (direction === "prev" && req.session.pdfIndex > 0) {
+            req.session.pdfIndex--;
+        } else {
+            return res.redirect("/");
+        }
+
+        const currStudent = req.session.pdfSubmissions[req.session.pdfIndex];
+        const student = await Student.findOne({ roll: currStudent.student_roll }).select("name");
+        return res.json({
+            student_name: student.name,
+            student_department: currStudent.department,
+            student_semester: currStudent.semester,
+            student_roll: currStudent.student_roll,
+            student_subject: currStudent.subject_name,
+        });
+    } catch (error) {
+        console.error("Error in /button/:direction route:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+});
+
+// Get PDF File
+app.get("/getPdf", checkRole("FACULTY"), (req, res) => {
+    try {
+        const pdfPath = req.session.pdfSubmissions[req.session.pdfIndex].file_path;
+        return res.sendFile(pdfPath, { root: __dirname });
+    } catch (error) {
+        console.error("Error in /getPdf route:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+});
 
 // listen
 app.listen(port, () => {

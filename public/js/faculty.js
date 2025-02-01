@@ -9,7 +9,6 @@ const prev_pdf_btn = document.getElementById("prev_pdf_btn");
 const next_pdf_btn = document.getElementById("next_pdf_btn");
 const pdf_viewer = document.getElementById("pdf_viewer");
 
-
 logoutButton.addEventListener("click", async () => {
     // alert("Logging out"); // for debugging
     try {
@@ -20,3 +19,28 @@ logoutButton.addEventListener("click", async () => {
         console.log("error while logging out ", error);
     }
 })
+prev_pdf_btn.addEventListener("click", async () => {
+    const res = await axios.post(`/button/prev`);
+    console.log(res.data);
+    console.log(res.data.student_roll);
+    fetchPDF();
+})
+next_pdf_btn.addEventListener("click", async () => {
+    const res = await axios.post(`/button/next`);
+    console.log(res.data);
+    console.log(res.data.student_department);
+    fetchPDF();
+})
+
+console.log("faculty.js is working now ");
+// fetchPDF();
+
+function fetchPDF() {
+    axios.get('/getPdf', { responseType: 'blob' }) // Expect binary data
+        .then(response => {
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            pdf_viewer.src = url;
+        })
+        .catch(error => console.error("Error fetching PDF:", error));
+}
