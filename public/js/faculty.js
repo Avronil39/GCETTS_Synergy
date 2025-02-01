@@ -22,7 +22,6 @@ logoutButton.addEventListener("click", async () => {
 prev_pdf_btn.addEventListener("click", async () => {
     const res = await axios.post(`/button/prev`);
     console.log(res.data);
-    // console.log(res.data.student_roll);
     updateFields(res.data);
     fetchPDF();
 
@@ -30,7 +29,6 @@ prev_pdf_btn.addEventListener("click", async () => {
 next_pdf_btn.addEventListener("click", async () => {
     const res = await axios.post(`/button/next`);
     console.log(res.data);
-    // console.log(res.data.student_department);
     updateFields(res.data);
     fetchPDF();
 })

@@ -10,35 +10,34 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Axios CDN -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-
-
 </head>
 
-<body class="bg-light">
+<body class="bg-light"> <!-- Bootstrap class for light background -->
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">GCETTS Synergy</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark"> <!-- Bootstrap navbar classes -->
+        <div class="container-fluid"> <!-- Bootstrap container-fluid for full width -->
+            <a class="navbar-brand" href="#">GCETTS Synergy</a> <!-- Bootstrap brand class -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
                 aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
+                <!-- Bootstrap navbar toggler -->
+                <span class="navbar-toggler-icon"></span> <!-- Bootstrap icon for toggler -->
             </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
+            <div class="collapse navbar-collapse" id="navbarNav"> <!-- Bootstrap collapse navbar -->
+                <ul class="navbar-nav"> <!-- Bootstrap nav items container -->
+                    <li class="nav-item dropdown"> <!-- Bootstrap dropdown item -->
                         <a class="nav-link dropdown-toggle" href="#" id="dropdownMenuLink" role="button"
                             data-bs-toggle="dropdown" aria-expanded="false">Subjects</a>
-                        <!-- dynamically listing subjects with ejs-->
-                        <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink">
+                        <!-- Bootstrap dropdown toggle -->
+                        <ul class="dropdown-menu" aria-labelledby="dropdownMenuLink"> <!-- Bootstrap dropdown menu -->
                             <% if (assignments.length===0) { %>
                                 <li><a class="dropdown-item" href="#" style="pointer-events: none; color: gray;">No
-                                        assignments</a></li>
+                                        assignments</a></li> <!-- Bootstrap dropdown item -->
                                 <% } else { %>
                                     <% assignments.forEach(assignment=> { %>
                                         <li><a class="dropdown-item"
                                                 href="/assignments/<%= assignment.subject_name %>/<%= assignment.semester %>">
                                                 Sub: <%= assignment.subject_name %> Sem: <%= assignment.semester %>
-                                            </a></li>
+                                            </a></li> <!-- Bootstrap dropdown item -->
                                         <% }); %>
                                             <% } %>
                         </ul>
@@ -46,82 +45,75 @@
                 </ul>
                 <!-- Logout Button -->
                 <button id="logoutBtn" class="btn ms-auto d-flex align-items-center" style="width: 40px; height: 40px;">
+                    <!-- Bootstrap button, margin-auto, flex alignment -->
                     <img src="/images/logout.svg" alt="Logout" width="24" height="24">
                 </button>
             </div>
         </div>
     </nav>
 
-
     <!-- Main Content -->
     <div class="container-fluid d-flex p-0" style="min-height: 93vh;">
+        <!-- Bootstrap container-fluid, flexbox, padding 0 -->
         <!-- Sidebar -->
         <div class="d-flex flex-column bg-dark text-light p-3" id="sidebar">
+            <!-- Bootstrap flex column, dark background, light text, padding -->
             <!-- Toggle Button for Mobile -->
             <button class="btn btn-dark mb-3 d-lg-none" type="button" data-bs-toggle="collapse"
                 data-bs-target="#sidebarMenu" aria-expanded="false" aria-controls="sidebarMenu">
+                <!-- Bootstrap button, margin bottom, hidden on large screens -->
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-list"
-                    viewBox="0 0 16 16">
+                    viewBox="0 0 16 16"> <!-- Bootstrap SVG icon -->
                     <path d="M2 2h12a1 1 0 0 1 1 1v1H1V3a1 1 0 0 1 1-1zM1 7h14v1H1V7zm0 4h14v1H1v-1zm0 4h14v1H1v-1z" />
                 </svg>
             </button>
 
             <!-- Collapsible Sidebar Content -->
-            <div class="collapse d-lg-block" id="sidebarMenu">
+            <div class="collapse d-lg-block" id="sidebarMenu"> <!-- Bootstrap collapse, visible on large screens -->
                 <p id="faculty_name">
                     Prof. <%= faculty_name %>
                 </p>
                 <p>Student Details</p>
-                <!-- ids 
-                    student_name,
-                    student_department,
-                    student_semester,
-                    student_roll,
-                    student_subject,
-                    prev_pdf_btn,
-                    next_pdf_btn -->
-                <div id="detailsWindow" class="container">
-                    <!-- Name Field -->
-                    <div class="mb-3">
-                        <label for="student_name" class="form-label">Name</label>
+                <div id="detailsWindow" class="container"> <!-- Bootstrap container for form fields -->
+                    <div class="mb-3"> <!-- Bootstrap margin-bottom -->
+                        <label for="student_name" class="form-label">Name</label> <!-- Bootstrap label class -->
                         <input type="text" id="student_name" class="form-control bg-white" readonly />
+                        <!-- Bootstrap form control -->
                     </div>
-                    <!-- Department Field -->
                     <div class="mb-3">
                         <label for="student_department" class="form-label">Department</label>
                         <input type="text" id="student_department" class="form-control bg-white" readonly />
                     </div>
-                    <!-- Semester Field -->
                     <div class="mb-3">
                         <label for="student_semester" class="form-label">Semester</label>
                         <input type="text" id="student_semester" class="form-control bg-white" readonly />
                     </div>
-                    <!-- Roll Number Field -->
                     <div class="mb-3">
                         <label for="student_roll" class="form-label">Roll Number</label>
                         <input type="text" id="student_roll" class="form-control bg-white" readonly />
                     </div>
-                    <!-- Subject Field -->
                     <div class="mb-3">
                         <label for="student_subject" class="form-label">Subject</label>
                         <input type="text" id="student_subject" class="form-control bg-white" readonly />
                     </div>
-                    <!-- Previous and Next PDF buttons -->
                     <button type="button" id="prev_pdf_btn" class="btn btn-secondary w-100 mb-2">Previous PDF</button>
+                    <!-- Bootstrap button, full width, margin bottom -->
                     <button type="button" id="next_pdf_btn" class="btn btn-secondary w-100">Next PDF</button>
+                    <!-- Bootstrap button, full width -->
                 </div>
             </div>
         </div>
 
         <!-- PDF Viewer -->
-        <div class="flex-grow-1 bg-white" id="pdf-container">
+        <div class="flex-grow-1 bg-white" id="pdf-container"> <!-- Bootstrap flex-grow for responsive layout -->
             <embed id="pdf_viewer" src="/facultyLandingPage.pdf" type="application/pdf" width="100%" height="100%">
         </div>
     </div>
 
     <!-- Footer -->
-    <footer class="bg-dark text-light text-center py-2">
+    <footer class="bg-dark text-light text-center py-2"> <!-- Bootstrap footer styling -->
         <p class="mb-0 fs-6">Copyright © Avronil Banerjee. All rights reserved.</p>
+        <!-- Bootstrap margin-bottom 0, small font size -->
     </footer>
 
     <!-- Bootstrap JS -->

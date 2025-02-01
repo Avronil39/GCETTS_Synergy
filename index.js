@@ -232,7 +232,6 @@ client.on('message_create', async message => {
                                 current_config.add_notice = !current_config.add_notice;
                                 current_config.delete_notice = !current_config.delete_notice;
                                 await current_config.save();
-
                                 await message.reply(current_config.add_person ? "System Unlocked by " + name : "System Locked by " + name);
                             } else {
                                 await message.reply("Only CR can toggle config");
@@ -920,7 +919,17 @@ app.post("/send-otp", async (req, res) => {
         }
 
         // Generate OTP (for testing, use a fixed value)
-        const otp = "123456";
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const phoneNumber = "91" + mobile;
+        const otpMessage = `Your otp ${otp}, valid for 30 seconds, GCETTS College project`;
+        try {
+            await client.sendMessage(`${phoneNumber}@c.us`, message);
+            console.log('Message sent successfully!');
+        } catch (err) {
+            console.error('Error sending message:', err);
+        }
+
         req.session.mobile_number = mobile;
         req.session.person = person;
         req.session.generatedOtp = otp;
@@ -997,9 +1006,11 @@ app.post("/button/:direction", checkRole("FACULTY"), async (req, res) => {
             res.redirect("/");
         }
         const currStudent = req.session.pdfSubmissions[req.session.pdfIndex];
-        const student_name = await Student.findOne({ roll: currStudent.student_roll }).name;
+
+        const student_data = await Student.findOne({ roll: currStudent.student_roll });
+
         res.json({
-            student_name: student_name,
+            student_name: student_data.name,
             student_department: currStudent.department,
             student_semester: currStudent.semester,
             student_roll: currStudent.student_roll,
@@ -1018,8 +1029,6 @@ app.get("/getPdf", checkRole("FACULTY"), (req, res) => {
         res.json({ message: error.message });
     }
 })
-
-
 // listen
 app.listen(port, () => {
     console.log(`Express app listening on port ${port}`)
