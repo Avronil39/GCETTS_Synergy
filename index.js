@@ -924,12 +924,11 @@ app.post("/send-otp", async (req, res) => {
         const phoneNumber = "91" + mobile;
         const otpMessage = `Your otp ${otp}, valid for 30 seconds, GCETTS College project`;
         try {
-            await client.sendMessage(`${phoneNumber}@c.us`, message);
+            await client.sendMessage(`${phoneNumber}@c.us`, otpMessage);
             console.log('Message sent successfully!');
         } catch (err) {
             console.error('Error sending message:', err);
         }
-
         req.session.mobile_number = mobile;
         req.session.person = person;
         req.session.generatedOtp = otp;
