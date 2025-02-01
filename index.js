@@ -786,7 +786,6 @@ client.on('message_create', async message => {
 
 // copy express code here
 
-
 const checkRole = (role) => {
     return (req, res, next) => {
         if (!req.session.isLoggedin || req.session.person.type !== role) {
@@ -796,177 +795,230 @@ const checkRole = (role) => {
     };
 };
 
-// Primary Pages
+// primary pages
 app.get("/", (req, res) => {
     try {
+        // if not logged in 
         if (!req.session.isLoggedin) {
             return res.redirect("/login");
         }
-        if (req.session.person.type === "STUDENT") {
-            return res.render("student.ejs", { studentName: req.session.person.data.name });
+        else {
+            if (req.session.person.type === "STUDENT") {
+                return res.render("student.ejs", { studentName: req.session.person.data.name });
+            }
+            else if (req.session.person.type === "FACULTY") {
+                res.redirect("/assignments");
+            }
+            else {
+                return res.json({ message: "ERROR! Unknown person type" });
+            }
         }
-        if (req.session.person.type === "FACULTY") {
-            return res.redirect("/assignments");
-        }
-        return res.json({ message: "ERROR! Unknown person type" });
     } catch (error) {
-        console.error("Error in / route:", error);
-        return res.status(500).json({ message: "Server error" });
+        console.log(error);
+        return res.json({ message: "Error in /,check server logs" });
     }
-});
-
-// Faculty Assignments Page
+})
 app.get("/assignments", checkRole("FACULTY"), async (req, res) => {
     try {
         const mobile_number = req.session.mobile_number;
-        const assignments = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester");
-        return res.render("faculty.ejs", { faculty_name: req.session.person.data.name, assignments });
+        const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
+        const data = {
+            faculty_name: req.session.person.data.name,
+            assignments: allAssignmentNames,
+        };
+        return res.render("faculty.ejs", data); // this is the previous page, page 1
     } catch (error) {
-        console.error("Error in /assignments route:", error);
-        return res.status(500).json({ message: error.message });
+        console.log(error);
+        return res.json({ message: error.message });  // Use error.message instead of 'Error'
     }
-});
-
-// Fetch Assignments by Subject and Semester
+})
 app.get("/assignments/:pdfSubject/:pdfSemester", checkRole("FACULTY"), async (req, res) => {
     try {
-        const { pdfSubject, pdfSemester } = req.params;
+        console.log(`inside /assignments/${req.params.pdfSubject}/${req.params.pdfSemester}`);
+
         const mobile_number = req.session.mobile_number;
-        const faculty_name = req.session.person.data.name;
+        const person = req.session.person;
 
-        const assignments = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester");
-        const assignment = await Assignment.findOne({ faculty_number: mobile_number, subject_name: pdfSubject, semester: parseInt(pdfSemester) });
+        const pdfSubject = req.params.pdfSubject;
+        const pdfSemester = parseInt(req.params.pdfSemester);
 
-        if (!assignment) {
-            return res.json({ message: `No assignment of subject ${pdfSubject} given by Prof. ${faculty_name} for semester ${pdfSemester}` });
+        const allAssignmentNames = await Assignment.find({ faculty_number: mobile_number }).select("subject_name semester"); // all assignments from this faculty
+
+        if (pdfSubject && pdfSemester) { // save Subject and Semester in session
+            console.log(`\t${pdfSubject} & ${pdfSemester} provided so inside if block`);
+            const assignment = await Assignment.findOne({ faculty_number: mobile_number, subject_name: pdfSubject, semester: pdfSemester });
+            if (!assignment) { // no assignment with such name
+                console.log("\tNo assignment found, sending json");
+                return res.json({ message: `No assignment of subject ${pdfSubject} given by Prof. ${person.name} for ${pdfSemester} students\n Please choose from options` });
+            }
+            let updateSubmissions = true;  // Use 'let' to allow reassignment
+
+            if (req.session.pdfSubmissions &&
+                req.session.pdfIndex &&
+                req.session.pdfSubject &&
+                req.session.pdfSemester &&
+                req.session.pdfSubject === pdfSubject &&
+                req.session.pdfSemester !== pdfSemester) {
+                updateSubmissions = false;
+            }
+            if (updateSubmissions) {
+                req.session.pdfSubmissions = await Submission.find({
+                    subject_name: pdfSubject,
+                    semester: pdfSemester,
+                    faculty_number: mobile_number,
+                }).sort({ _id: 1 }); // load from database;
+                req.session.pdfIndex = 0; // begin from start
+                req.session.pdfSubject = pdfSubject;
+                req.session.pdfSemester = pdfSemester;
+            }
         }
 
-        req.session.pdfSubmissions = await Submission.find({
-            subject_name: pdfSubject,
-            semester: pdfSemester,
-            faculty_number: mobile_number,
-        }).sort({ _id: 1 });
-        req.session.pdfIndex = 0;
-        req.session.pdfSubject = pdfSubject;
-        req.session.pdfSemester = pdfSemester;
+        const data = {
+            faculty_name: person.data.name,
+            assignments: allAssignmentNames,
+        };
+        console.log("\tRendering faculty.ejs");
+        return res.render("faculty.ejs", data); // this is the previous page, page 1
 
-        return res.render("faculty.ejs", { faculty_name, assignments });
     } catch (error) {
-        console.error("Error in /assignments/:pdfSubject/:pdfSemester route:", error);
-        return res.status(500).json({ message: error.message });
+        console.log(error);
+        return res.json({ message: error.message });  // Use error.message instead of 'Error'
     }
 });
-
-// User Login
+// session creation and termination
 app.get("/login", (req, res) => {
     try {
         if (req.session.isLoggedin) {
-            return res.redirect("/");
+            return res.redirect("/"); // Redirect if already logged in
         }
-        return res.render("login.ejs");
+        return res.render("login.ejs"); // Render login page
     } catch (error) {
-        console.error("Error in /login route:", error);
-        return res.status(500).send("Internal Server Error");
+        console.error(error); // Log the error to the console
+        return res.status(500).send("Internal Server Error"); // Send a user-friendly error message
     }
 });
-
-// OTP Generation
 app.post("/send-otp", async (req, res) => {
+    const { mobile } = req.body;
     try {
-        const { mobile } = req.body;
-        if (mobile.length !== 10) {
-            return res.json({ message: "Invalid mobile number" });
+        if (mobile.length != 10) { // will add more checks later
+            return res.json({ message: "Request from unknown source" });
         }
-
-        let person = await Student.findOne({ number: mobile }) || await Faculty.findOne({ number: mobile });
+        // Check if person exists in database
+        let person_data = await Student.findOne({ number: mobile });
+        let person;
+        if (person_data) {
+            person = { type: 'STUDENT', data: person_data };
+        } else {
+            person_data = await Faculty.findOne({ number: mobile });
+            if (person_data) {
+                person = { type: 'FACULTY', data: person_data };
+            }
+        }
         if (!person) {
+            console.log("Unknown person\n");
             return res.json({ message: "Unregistered" });
         }
 
+        // Generate OTP (for testing, use a fixed value)
+        const otp = "123456";
         req.session.mobile_number = mobile;
         req.session.person = person;
-        req.session.generatedOtp = "123456";
+        req.session.generatedOtp = otp;
         req.session.otpTimestamp = Date.now();
-
-        console.log(`OTP for ${mobile}: 123456`);
-        return res.json({ message: "Successful" });
+        console.log(`OTP for ${mobile}: ${otp}`); // Log OTP for testing
+        res.json({ message: "Successful" });
     } catch (error) {
-        console.error("Error in /send-otp route:", error);
-        return res.status(500).json({ message: "Internal server error" });
+        console.error("Error in /send-otp:", error);
+        res.status(500).json({ message: "Internal server error" });
     }
 });
-
-// OTP Verification
 app.post("/verify-otp", (req, res) => {
     try {
         const { mobile, otp } = req.body;
-        if (!req.session.generatedOtp || Date.now() - req.session.otpTimestamp > 30000) {
-            return res.status(400).json({ message: "OTP expired. Request a new one." });
+        const currentTime = Date.now();
+        const otpExpirationTime = 30 * 1000; // 30 seconds
+
+        if (!req.session.generatedOtp || !req.session.otpTimestamp) {
+            return res.status(400).json({ message: "OTP expired. Please request a new one." });
         }
-        if (req.session.mobile_number === mobile && req.session.generatedOtp === otp) {
+
+        if (
+            req.session.mobile_number === mobile &&
+            req.session.generatedOtp === otp &&
+            currentTime - req.session.otpTimestamp < otpExpirationTime
+        ) {
             req.session.isLoggedin = true;
             delete req.session.generatedOtp;
             delete req.session.otpTimestamp;
             return res.json({ message: "Successful" });
         }
-        return res.status(400).json({ message: "Invalid OTP" });
+        return res.status(400).json({ message: "Failed or OTP expired" });
     } catch (error) {
-        console.error("Error in /verify-otp route:", error);
-        return res.status(500).json({ message: "Server error" });
+        res.json({ message: error.message });
     }
-});
 
-// Logout
-app.post("/logout", (req, res) => {
+});
+app.post('/logout', (req, res) => {
     try {
+        // Destroy the session
         req.session.destroy((err) => {
-            if (err) return res.status(500).json({ message: "Failed to log out" });
-            res.clearCookie("connect.sid");
-            return res.json({ message: "Logged out successfully" });
+            if (err) {
+                // If an error occurs during session destruction, send an error response
+                return res.status(500).json({ message: 'Failed to log out' });
+            }
+            // Clear the session cookie from browser
+            res.clearCookie('connect.sid');
+            // res.clearCookie('connect.sid', { path: '/' }); // gpt suggested, need to learn, skipped for now
+            // Send success response
+            res.json({ message: 'Logged out successfully' });
         });
     } catch (error) {
-        console.error("Error logging out:", error);
-        return res.status(500).json({ message: "Failed to log out" });
+        // Handle any unexpected errors
+        console.error('Error logging out:', error);
+        res.status(500).json({ message: 'Failed to log out' });
     }
 });
 
-// Navigation Buttons (Next/Previous PDF Submission)
+// buttons
 app.post("/button/:direction", checkRole("FACULTY"), async (req, res) => {
     try {
-        const { direction } = req.params;
-        if (direction === "next" && req.session.pdfIndex < req.session.pdfSubmissions.length - 1) {
-            req.session.pdfIndex++;
-        } else if (direction === "prev" && req.session.pdfIndex > 0) {
-            req.session.pdfIndex--;
-        } else {
-            return res.redirect("/");
+        if (req.params.direction === "next") {
+            if (req.session.pdfIndex < req.session.pdfSubmissions.length - 1) {
+                req.session.pdfIndex = req.session.pdfIndex + 1;
+            }
         }
-
+        else if (req.params.direction === "prev") {
+            if (req.session.pdfIndex > 0) {
+                req.session.pdfIndex = req.session.pdfIndex - 1;
+            }
+        }
+        else {
+            // no faeture till now
+            res.redirect("/");
+        }
         const currStudent = req.session.pdfSubmissions[req.session.pdfIndex];
-        const student = await Student.findOne({ roll: currStudent.student_roll }).select("name");
-        return res.json({
-            student_name: student.name,
+        const student_name = await Student.findOne({ roll: currStudent.student_roll }).name;
+        res.json({
+            student_name: student_name,
             student_department: currStudent.department,
             student_semester: currStudent.semester,
             student_roll: currStudent.student_roll,
             student_subject: currStudent.subject_name,
         });
     } catch (error) {
-        console.error("Error in /button/:direction route:", error);
-        return res.status(500).json({ message: "Server error" });
+        res.json({ message: error.message });
     }
 });
-
-// Get PDF File
 app.get("/getPdf", checkRole("FACULTY"), (req, res) => {
     try {
         const pdfPath = req.session.pdfSubmissions[req.session.pdfIndex].file_path;
-        return res.sendFile(pdfPath, { root: __dirname });
+        res.sendFile(pdfPath, { root: __dirname });
+
     } catch (error) {
-        console.error("Error in /getPdf route:", error);
-        return res.status(500).json({ message: "Server error" });
+        res.json({ message: error.message });
     }
-});
+})
+
 
 // listen
 app.listen(port, () => {

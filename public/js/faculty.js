@@ -22,13 +22,16 @@ logoutButton.addEventListener("click", async () => {
 prev_pdf_btn.addEventListener("click", async () => {
     const res = await axios.post(`/button/prev`);
     console.log(res.data);
-    console.log(res.data.student_roll);
+    // console.log(res.data.student_roll);
+    updateFields(res.data);
     fetchPDF();
+
 })
 next_pdf_btn.addEventListener("click", async () => {
     const res = await axios.post(`/button/next`);
     console.log(res.data);
-    console.log(res.data.student_department);
+    // console.log(res.data.student_department);
+    updateFields(res.data);
     fetchPDF();
 })
 
@@ -43,4 +46,12 @@ function fetchPDF() {
             pdf_viewer.src = url;
         })
         .catch(error => console.error("Error fetching PDF:", error));
+}
+
+function updateFields(data) {
+    student_name.value = data.student_name;
+    student_department.value = data.student_department;
+    student_semester.value = data.student_semester;
+    student_roll.value = data.student_roll;
+    student_subject.value = data.student_subject;
 }
