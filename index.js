@@ -93,8 +93,27 @@ client.on('message_create', async message => {
         ]);
 
         // Ensure both configurations exist before proceeding
-        if (!studentConfig || !facultyConfig) {
-            throw new Error('Required configuration not found');
+        // if (!studentConfig || !facultyConfig) {
+        //     throw new Error('Required configuration not found');
+        // }
+
+        if (!studentConfig) {
+            new Config({
+                about: "STUDENT",
+                add_person: true,
+                delete_person: true,
+                add_notice: true,
+                delete_notice: true,
+            }).save();
+        }
+        if (!facultyConfig) {
+            new Config({
+                about: "FACULTY",
+                add_person: true,
+                delete_person: true,
+                add_notice: true,
+                delete_notice: true,
+            }).save();
         }
 
         // Only process messages that:
