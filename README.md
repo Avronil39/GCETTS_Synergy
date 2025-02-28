@@ -9,3 +9,9 @@ Features
 5. Bulk Submission Download (Faculty) – Allows faculty members to download all submissions as a .rar file.
 
 This chatbot is developed to simplify academic tasks and improve efficiency for students, faculty, and class representatives.
+
+Technologies used:
+1. Node, Whatsapp-web-js, Express
+2. Html,Bootstrap,Js,Axios
+3. Mongodb
+4. NGROK
