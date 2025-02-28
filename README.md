@@ -1,9 +1,11 @@
-# gcetts_ai
-This is a chatbot for Government College of Engineering and Textile Technology Serampore
-Its my Institution
-It is intended to ease up processes of 
-1. Assignment Submission with File format checking (For students)
-2. Online Assignment checking (For faculty)
-3. Notice Board Feature (For CR)
-4. Reminder Feature (For students)
-5. Get submissions in rar file (For faculty)
+GCETTS AI - WhatsApp Chatbot
+This is a WhatsApp chatbot designed for the Government College of Engineering and Textile Technology, Serampore (GCETTS). It aims to streamline various academic processes and enhance communication within the institution.
+
+Features
+1. Assignment Submission (Students) – Ensures correct file format before submission.
+2. Online Assignment Checking (Faculty) – Provides a web interface for reviewing assignments.
+3. Notice Board (CR) – Enables class representatives to share important notices.
+4. Reminders (Students) – Sends automated reminders for assignments and deadlines.
+5. Bulk Submission Download (Faculty) – Allows faculty members to download all submissions as a .rar file.
+
+This chatbot is developed to simplify academic tasks and improve efficiency for students, faculty, and class representatives.
